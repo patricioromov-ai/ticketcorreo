@@ -133,9 +133,10 @@
   }
   .chip.active { background: var(--chip-color, var(--accent)); color: #fff; border-color: var(--chip-color, var(--accent)); }
 
-  .board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-  @media (max-width: 1200px) { .board { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 640px) { .board { grid-template-columns: 1fr; } .layout { flex-direction: column; } aside.composer { width: 100%; position: static; } }
+  .board { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 10px; align-items: flex-start; }
+  .board-col { flex: 0 0 290px; min-width: 290px; }
+  .column-body { display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 320px); min-height: 80px; overflow-y: auto; padding-right: 4px; }
+  @media (max-width: 640px) { .board-col { flex-basis: 82vw; min-width: 82vw; } .layout { flex-direction: column; } aside.composer { width: 100%; position: static; } }
 
   .column-header {
     display: flex; align-items: center; gap: 8px; padding: 10px 12px;
@@ -149,7 +150,6 @@
     margin-left: auto; background: var(--col-color); color: #fff; font-size: 11px; font-weight: 700;
     width: 22px; height: 22px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
   }
-  .column-body { display: flex; flex-direction: column; gap: 12px; }
   .empty-col { border: 1px dashed var(--line); border-radius: 10px; padding: 16px; text-align: center; color: var(--muted); font-size: 12.5px; }
 
   .card {
@@ -257,6 +257,13 @@
   .sort-arrow { font-size: 10px; margin-left: 4px; opacity: 0.6; }
   .pill-warn.clickable { cursor: pointer; border: 1px solid rgba(179,38,30,0.25); }
   .pill-warn.clickable.active-filter { background: var(--alta); color: #fff; }
+
+  .lectura-bar {
+    display: flex; align-items: center; gap: 10px; padding: 9px 28px;
+    background: color-mix(in srgb, var(--lectura-color) 8%, var(--surface));
+    border-bottom: 1px solid var(--line); font-size: 13px;
+  }
+  .lectura-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--lectura-color); flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -277,7 +284,7 @@ const authClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.ANON_KEY);
 
 // Súbela cada vez que reemplaces este archivo, para saber a simple vista
 // qué versión tienes cargada (se muestra chica, junto al título).
-const APP_VERSION = "v1.3 · 2 sep 2026";
+const APP_VERSION = "v1.4 · 2 sep 2026";
 
 const ESTADOS = ["Nuevo", "En gestión", "Gasto Común", "Operaciones", "Administración", "Póliza", "Comité", "Esperando respuesta", "Resuelto"];
 const ESTADO_COLORS = {
@@ -457,10 +464,6 @@ function render() {
       <div style="display:flex; align-items:center; gap:10px;">
         ${urgentes > 0 ? `<button class="pill pill-warn clickable ${state.soloUrgentes ? "active-filter" : ""}" id="badge-urgentes">${iconSvg("alert-triangle", 15)} ${urgentes} sin gestión +3 días</button>` : ""}
         <button class="btn-ghost" id="toggle-resueltos">${state.soloAbiertos ? iconSvg("eye", 14) + " Ver resueltos" : iconSvg("eye-off", 14) + " Ocultar resueltos"}</button>
-        ${state.lecturaActiva !== null ? `
-        <button class="btn-ghost" id="toggle-lectura" title="${state.lecturaActiva ? "Pausar lectura automática de correos" : "Reanudar lectura automática de correos"}">
-          ${state.lecturaActiva ? iconSvg("pause", 14) + " Pausar lectura" : iconSvg("play", 14) + " Reanudar lectura"}
-        </button>` : ""}
         <div class="view-toggle">
           <button data-vista="tablero" class="${state.vista === "tablero" ? "active" : ""}">${iconSvg("layout-grid", 14)} Tablero</button>
           <button data-vista="estadisticas" class="${state.vista === "estadisticas" ? "active" : ""}">${iconSvg("bar-chart-3", 14)} Estadísticas</button>
@@ -469,6 +472,14 @@ function render() {
         <button class="icon-btn" id="btn-logout" aria-label="Cerrar sesión" title="Cerrar sesión">${iconSvg("log-out", 18)}</button>
       </div>
     </header>
+    ${state.lecturaActiva !== null ? `
+    <div class="lectura-bar" style="--lectura-color: ${state.lecturaActiva ? "var(--resuelto)" : "var(--muted)"}">
+      <span class="lectura-dot"></span>
+      <span>Lectura automática de correos: <strong>${state.lecturaActiva ? "activa (cada 10 min, buzón contacto)" : "pausada"}</strong></span>
+      <button class="btn-ghost" id="toggle-lectura" style="margin-left:auto;">
+        ${state.lecturaActiva ? iconSvg("pause", 13) + " Pausar" : iconSvg("play", 13) + " Reanudar"}
+      </button>
+    </div>` : ""}
 
     <div class="layout">
       <aside class="composer relative">
@@ -542,7 +553,7 @@ function renderTablero() {
       return new Date(a.last_activity_at) - new Date(b.last_activity_at);
     });
     return `
-      <div>
+      <div class="board-col">
         <div class="column-header" style="--col-color: ${ESTADO_COLORS[estado]}">
           <span class="dot"></span><h3>${estado}</h3><span class="column-count">${items.length}</span>
         </div>
