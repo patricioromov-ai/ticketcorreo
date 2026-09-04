@@ -264,6 +264,13 @@
     border-bottom: 1px solid var(--line); font-size: 13px;
   }
   .lectura-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--lectura-color); flex-shrink: 0; }
+
+  .bulk-bar {
+    display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1.5px solid var(--accent);
+    border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; font-weight: 600;
+  }
+  .bulk-bar button { flex-shrink: 0; }
+  .row-check { width: 34px; }
 </style>
 </head>
 <body>
@@ -284,7 +291,7 @@ const authClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.ANON_KEY);
 
 // Súbela cada vez que reemplaces este archivo, para saber a simple vista
 // qué versión tienes cargada (se muestra chica, junto al título).
-const APP_VERSION = "v1.5 · 2 sep 2026";
+const APP_VERSION = "v1.6 · 4 sep 2026";
 
 const ESTADOS = ["Nuevo", "En gestión", "Gasto Común", "Operaciones", "Administración", "Póliza", "Comité", "Esperando respuesta", "Resuelto"];
 const ESTADO_COLORS = {
@@ -312,6 +319,7 @@ let state = {
   sortCampo: "prioridad", sortDir: "asc",
   modalTab: "datos",
   archivados: [], archivadosCargados: false,
+  seleccionados: new Set(),
   lecturaActiva: null, lecturaIncluyeGastos: false,
   cargando: false, error: "", procesandoNuevo: false, imagenNueva: null,
   detalleId: null, chartInstance: null,
@@ -586,19 +594,31 @@ function renderTabla(visibles) {
     if (fa < fb) return -1 * dir; if (fa > fb) return 1 * dir; return 0;
   });
   const th = (campo, label) => `<th data-sort="${campo}">${label}${state.sortCampo === campo ? `<span class="sort-arrow">${state.sortDir === "asc" ? "▲" : "▼"}</span>` : ""}</th>`;
+  const idsVisibles = filas.map((t) => t.id);
+  const todosMarcados = idsVisibles.length > 0 && idsVisibles.every((id) => state.seleccionados.has(id));
+  const seleccionActual = idsVisibles.filter((id) => state.seleccionados.has(id));
 
-  return `
+  const barra = seleccionActual.length > 0 ? `
+    <div class="bulk-bar">
+      ${iconSvg("check-circle-2", 15)} ${seleccionActual.length} seleccionado${seleccionActual.length > 1 ? "s" : ""}
+      <button class="btn-ghost" id="btn-archivar-seleccion">${iconSvg("archive", 13)} Archivar seleccionados</button>
+      <button class="btn-ghost" id="btn-cancelar-seleccion" style="margin-left:auto;">Cancelar</button>
+    </div>` : "";
+
+  return barra + `
     <table class="ticket-table">
       <thead><tr>
+        <th class="row-check"><input type="checkbox" id="check-todos" ${todosMarcados ? "checked" : ""} /></th>
         ${th("folio", "Folio")}${th("fecha", "Llegada")}${th("tema", "Tema")}${th("buzon", "Buzón")}${th("prioridad", "Prioridad")}${th("estado", "Estado")}${th("solicitante", "Solicitante")}${th("dias", "Días s/gestión")}<th></th>
       </tr></thead>
       <tbody>
-        ${filas.length === 0 ? `<tr><td colspan="9" class="muted" style="text-align:center; padding:24px;">Sin tickets</td></tr>` : filas.map((t) => {
+        ${filas.length === 0 ? `<tr><td colspan="10" class="muted" style="text-align:center; padding:24px;">Sin tickets</td></tr>` : filas.map((t) => {
           const buzon = BUZONES.find((b) => b.id === t.buzon) || BUZONES[0];
           const dias = daysSince(t.last_activity_at);
           const urgente = t.estado !== "Resuelto" && dias >= 3;
           return `
           <tr class="row-clickable" data-open="${t.id}">
+            <td class="row-check"><input type="checkbox" class="check-fila" data-check="${t.id}" ${state.seleccionados.has(t.id) ? "checked" : ""} onclick="event.stopPropagation()" /></td>
             <td class="mono">${t.folio}</td>
             <td class="mono" style="font-size:12px; white-space:nowrap;">${fmtDate(t.created_at)}</td>
             <td>${escapeHtml(t.tema)}</td>
@@ -649,14 +669,30 @@ function renderArchivados() {
   if (state.archivados.length === 0) {
     return `<div class="panel" style="text-align:center; color:var(--muted);">${iconSvg("archive", 22)}<p style="margin-top:8px;">No hay tickets archivados.</p></div>`;
   }
-  return `
+  const idsVisibles = state.archivados.map((t) => t.id);
+  const todosMarcados = idsVisibles.length > 0 && idsVisibles.every((id) => state.seleccionados.has(id));
+  const seleccionActual = idsVisibles.filter((id) => state.seleccionados.has(id));
+
+  const barra = seleccionActual.length > 0 ? `
+    <div class="bulk-bar">
+      ${iconSvg("check-circle-2", 15)} ${seleccionActual.length} seleccionado${seleccionActual.length > 1 ? "s" : ""}
+      <button class="btn-ghost" id="btn-restaurar-seleccion">${iconSvg("rotate-ccw", 13)} Restaurar seleccionados</button>
+      <button class="btn-ghost" style="color:var(--alta); border-color:var(--alta);" id="btn-eliminar-seleccion">${iconSvg("x", 13)} Eliminar definitivamente</button>
+      <button class="btn-ghost" id="btn-cancelar-seleccion" style="margin-left:auto;">Cancelar</button>
+    </div>` : "";
+
+  return barra + `
     <table class="ticket-table">
-      <thead><tr><th>Folio</th><th>Tema</th><th>Buzón</th><th>Categoría</th><th>Solicitante</th><th></th></tr></thead>
+      <thead><tr>
+        <th class="row-check"><input type="checkbox" id="check-todos" ${todosMarcados ? "checked" : ""} /></th>
+        <th>Folio</th><th>Tema</th><th>Buzón</th><th>Categoría</th><th>Solicitante</th><th></th>
+      </tr></thead>
       <tbody>
         ${state.archivados.map((t) => {
           const buzon = BUZONES.find((b) => b.id === t.buzon) || BUZONES[0];
           return `
           <tr>
+            <td class="row-check"><input type="checkbox" class="check-fila" data-check="${t.id}" ${state.seleccionados.has(t.id) ? "checked" : ""} /></td>
             <td class="mono">${t.folio}</td>
             <td>${escapeHtml(t.tema)}</td>
             <td><span class="badge" style="background: color-mix(in srgb, ${buzon.color} 14%, white); color: ${buzon.color}">${buzon.label}</span></td>
@@ -747,7 +783,10 @@ function renderModal() {
             <input type="text" id="edit-solicitante" value="${escapeAttr(t.solicitante || "")}" />
           </div>
         </div>
-        <button class="btn-ghost" id="btn-guardar-datos" style="margin-top:14px;">Guardar datos</button>
+        <div style="display:flex; gap:8px; margin-top:14px;">
+          <button class="btn-ghost" id="btn-guardar-datos">Guardar datos</button>
+          <button class="btn-ghost" style="color:var(--alta); border-color:var(--alta);" id="btn-archivar-desde-modal">${iconSvg("archive", 13)} Archivar este ticket</button>
+        </div>
         ${t.transferencia ? `
         <div class="transfer-box" style="margin-top:18px;">
           <p class="sparkle-label">${iconSvg("landmark", 13)} Datos de transferencia detectados</p>
@@ -875,6 +914,56 @@ function attachEvents() {
     } catch (e) { showToast("No se pudo eliminar", "error"); }
   });
 
+  // Selección múltiple (checkboxes en Tabla y Archivados)
+  const checkTodos = document.getElementById("check-todos");
+  if (checkTodos) checkTodos.onchange = () => {
+    document.querySelectorAll(".check-fila").forEach((c) => {
+      const id = Number(c.dataset.check);
+      if (checkTodos.checked) state.seleccionados.add(id); else state.seleccionados.delete(id);
+    });
+    render();
+  };
+  document.querySelectorAll(".check-fila").forEach((c) => c.onchange = () => {
+    const id = Number(c.dataset.check);
+    if (c.checked) state.seleccionados.add(id); else state.seleccionados.delete(id);
+    render();
+  });
+  const btnCancelarSeleccion = document.getElementById("btn-cancelar-seleccion");
+  if (btnCancelarSeleccion) btnCancelarSeleccion.onclick = () => { state.seleccionados.clear(); render(); };
+
+  const btnArchivarSeleccion = document.getElementById("btn-archivar-seleccion");
+  if (btnArchivarSeleccion) btnArchivarSeleccion.onclick = async () => {
+    const ids = [...state.seleccionados];
+    if (!confirm(`¿Archivar ${ids.length} tickets seleccionados?`)) return;
+    for (const id of ids) { try { await api("archivar_ticket", { id }); } catch (e) { /* sigue con el resto */ } }
+    showToast(`${ids.length} tickets archivados`);
+    state.seleccionados.clear();
+    state.archivadosCargados = false;
+    cargarTodo();
+  };
+
+  const btnRestaurarSeleccion = document.getElementById("btn-restaurar-seleccion");
+  if (btnRestaurarSeleccion) btnRestaurarSeleccion.onclick = async () => {
+    const ids = [...state.seleccionados];
+    for (const id of ids) { try { await api("actualizar_ticket", { id, patch: { archivado: false } }); } catch (e) { /* sigue */ } }
+    showToast(`${ids.length} tickets restaurados`);
+    state.seleccionados.clear();
+    state.archivadosCargados = false;
+    await cargarArchivados();
+    cargarTodo();
+  };
+
+  const btnEliminarSeleccion = document.getElementById("btn-eliminar-seleccion");
+  if (btnEliminarSeleccion) btnEliminarSeleccion.onclick = async () => {
+    const ids = [...state.seleccionados];
+    if (!confirm(`¿Eliminar definitivamente ${ids.length} tickets? Esta acción NO se puede deshacer.`)) return;
+    for (const id of ids) { try { await api("eliminar_definitivo", { id }); } catch (e) { /* sigue */ } }
+    showToast(`${ids.length} tickets eliminados definitivamente`);
+    state.seleccionados.clear();
+    state.archivadosCargados = false;
+    await cargarArchivados();
+  };
+
   document.querySelectorAll("[data-estado-de]").forEach((s) => s.onchange = async () => {
     const id = Number(s.dataset.estadoDe);
     const ticketActual = state.tickets.find((t) => t.id === id);
@@ -905,6 +994,17 @@ function attachEvents() {
 
   const btnGuardar = document.getElementById("btn-guardar-datos");
   if (btnGuardar) btnGuardar.onclick = guardarDatosTicket;
+  const btnArchivarModal = document.getElementById("btn-archivar-desde-modal");
+  if (btnArchivarModal) btnArchivarModal.onclick = async () => {
+    if (!confirm("¿Archivar este ticket? Se quita del tablero pero su historial no se pierde.")) return;
+    try {
+      await api("archivar_ticket", { id: state.detalleId });
+      showToast("Ticket archivado");
+      state.detalleId = null;
+      state.archivadosCargados = false;
+      cargarTodo();
+    } catch (e) { showToast("No se pudo archivar", "error"); }
+  };
   const btnNota = document.getElementById("btn-agregar-nota");
   if (btnNota) btnNota.onclick = agregarNota;
   const btnReprocesar = document.getElementById("btn-reprocesar");
