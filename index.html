@@ -284,7 +284,7 @@ const authClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.ANON_KEY);
 
 // Súbela cada vez que reemplaces este archivo, para saber a simple vista
 // qué versión tienes cargada (se muestra chica, junto al título).
-const APP_VERSION = "v1.4 · 2 sep 2026";
+const APP_VERSION = "v1.5 · 2 sep 2026";
 
 const ESTADOS = ["Nuevo", "En gestión", "Gasto Común", "Operaciones", "Administración", "Póliza", "Comité", "Esperando respuesta", "Resuelto"];
 const ESTADO_COLORS = {
@@ -383,7 +383,15 @@ function fileToBase64(file) {
 }
 
 function daysSince(iso) { return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); }
-function fmtDate(iso) { return new Date(iso).toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); }
+function fmtDate(iso) {
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
+}
 
 function showToast(mensaje, tipo = "ok") {
   const stack = document.getElementById("toast-stack");
@@ -570,6 +578,7 @@ function renderTabla(visibles) {
   const campos = {
     folio: (t) => t.folio, tema: (t) => t.tema, buzon: (t) => t.buzon, prioridad: (t) => PRIORIDAD_RANK[t.prioridad],
     estado: (t) => t.estado, solicitante: (t) => t.solicitante || "", dias: (t) => daysSince(t.last_activity_at),
+    fecha: (t) => t.created_at,
   };
   const dir = state.sortDir === "asc" ? 1 : -1;
   const filas = [...visibles].sort((a, b) => {
@@ -581,16 +590,17 @@ function renderTabla(visibles) {
   return `
     <table class="ticket-table">
       <thead><tr>
-        ${th("folio", "Folio")}${th("tema", "Tema")}${th("buzon", "Buzón")}${th("prioridad", "Prioridad")}${th("estado", "Estado")}${th("solicitante", "Solicitante")}${th("dias", "Días s/gestión")}<th></th>
+        ${th("folio", "Folio")}${th("fecha", "Llegada")}${th("tema", "Tema")}${th("buzon", "Buzón")}${th("prioridad", "Prioridad")}${th("estado", "Estado")}${th("solicitante", "Solicitante")}${th("dias", "Días s/gestión")}<th></th>
       </tr></thead>
       <tbody>
-        ${filas.length === 0 ? `<tr><td colspan="8" class="muted" style="text-align:center; padding:24px;">Sin tickets</td></tr>` : filas.map((t) => {
+        ${filas.length === 0 ? `<tr><td colspan="9" class="muted" style="text-align:center; padding:24px;">Sin tickets</td></tr>` : filas.map((t) => {
           const buzon = BUZONES.find((b) => b.id === t.buzon) || BUZONES[0];
           const dias = daysSince(t.last_activity_at);
           const urgente = t.estado !== "Resuelto" && dias >= 3;
           return `
           <tr class="row-clickable" data-open="${t.id}">
             <td class="mono">${t.folio}</td>
+            <td class="mono" style="font-size:12px; white-space:nowrap;">${fmtDate(t.created_at)}</td>
             <td>${escapeHtml(t.tema)}</td>
             <td><span class="badge" style="background: color-mix(in srgb, ${buzon.color} 14%, white); color: ${buzon.color}">${buzon.label}</span></td>
             <td><span class="badge" style="background: color-mix(in srgb, ${PRIORIDAD_COLORS[t.prioridad]} 14%, white); color: ${PRIORIDAD_COLORS[t.prioridad]}; text-transform:capitalize;">${t.prioridad}</span></td>
@@ -611,7 +621,7 @@ function renderCard(t) {
   return `
     <div class="card" style="--buzon-color: ${buzon.color}; --estado-color: ${ESTADO_COLORS[t.estado]}" data-open="${t.id}">
       <div class="card-top">
-        <span class="card-id mono">${t.folio}</span>
+        <span class="card-id mono">${t.folio} · ${fmtDate(t.created_at)}</span>
         <button class="icon-btn" data-archive="${t.id}" aria-label="Archivar ticket" onclick="event.stopPropagation()">${iconSvg("archive", 15)}</button>
       </div>
       <div class="card-title">${escapeHtml(t.tema)}</div>
@@ -780,7 +790,7 @@ function renderModal() {
     <div class="overlay" id="overlay">
       <div class="modal">
         <div class="modal-header">
-          <h3 style="font-size:16px;">${t.folio} · <span style="color:${ESTADO_COLORS[t.estado]}">${t.estado}</span></h3>
+          <h3 style="font-size:16px;">${t.folio} · <span style="color:${ESTADO_COLORS[t.estado]}">${t.estado}</span> <span class="muted" style="font-weight:400; font-size:13px;">· ${fmtDate(t.created_at)}</span></h3>
           <button class="icon-btn" id="cerrar-modal" aria-label="Cerrar">${iconSvg("x", 22)}</button>
         </div>
         <div class="tabs-row">
