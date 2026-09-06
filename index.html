@@ -271,6 +271,12 @@
   }
   .bulk-bar button { flex-shrink: 0; }
   .row-check { width: 34px; }
+
+  .email-block { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .email-tag { display: inline-block; margin: 8px 10px 0; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--accent); color: #fff; }
+  .email-meta-row { padding: 8px 12px; border-bottom: 1px solid var(--line); background: #FAFAF8; font-size: 12.5px; }
+  .email-meta-row strong { color: var(--muted); font-weight: 700; margin-right: 4px; }
+  .email-body { padding: 10px 12px; font-size: 13px; white-space: pre-wrap; line-height: 1.5; max-height: 220px; overflow-y: auto; }
 </style>
 </head>
 <body>
@@ -291,7 +297,7 @@ const authClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.ANON_KEY);
 
 // Súbela cada vez que reemplaces este archivo, para saber a simple vista
 // qué versión tienes cargada (se muestra chica, junto al título).
-const APP_VERSION = "v1.6 · 4 sep 2026";
+const APP_VERSION = "v1.7 · 5 sep 2026";
 
 const ESTADOS = ["Nuevo", "En gestión", "Gasto Común", "Operaciones", "Administración", "Póliza", "Comité", "Esperando respuesta", "Resuelto"];
 const ESTADO_COLORS = {
@@ -318,7 +324,7 @@ let state = {
   soloAbiertos: true, soloUrgentes: false, modoVista: "kanban",
   sortCampo: "prioridad", sortDir: "asc",
   modalTab: "datos",
-  archivados: [], archivadosCargados: false,
+  archivados: [], archivadosCargados: false, historialArchivados: [],
   seleccionados: new Set(),
   lecturaActiva: null, lecturaIncluyeGastos: false,
   cargando: false, error: "", procesandoNuevo: false, imagenNueva: null,
@@ -448,8 +454,9 @@ async function alternarLectura() {
 
 async function cargarArchivados() {
   try {
-    const { tickets } = await api("listar_tickets", { archivados: true });
+    const { tickets, historial } = await api("listar_tickets", { archivados: true });
     state.archivados = tickets || [];
+    state.historialArchivados = historial || [];
     state.archivadosCargados = true;
     render();
   } catch (e) {
@@ -458,7 +465,28 @@ async function cargarArchivados() {
 }
 
 function historialDe(ticketId) {
-  return state.historial.filter((h) => h.ticket_id === ticketId);
+  return [...state.historial, ...state.historialArchivados].filter((h) => h.ticket_id === ticketId);
+}
+
+function renderHistorialEntry(h) {
+  let texto = h.texto;
+  let etiqueta = "";
+  const tagM = texto.match(/^\[([^\]]+)\]\s*/);
+  if (tagM) { etiqueta = tagM[1]; texto = texto.slice(tagM[0].length); }
+
+  const m = h.tipo === "correo" ? texto.match(/^De:\s*(.*)\nAsunto:\s*(.*)\n(?:Carpeta original:\s*(.*)\n)?\n([\s\S]*)$/) : null;
+  if (m) {
+    const [, de, asunto, carpeta, cuerpo] = m;
+    return `
+      ${etiqueta ? `<span class="email-tag">${escapeHtml(etiqueta)}</span>` : ""}
+      <div class="email-block" style="${etiqueta ? "margin-top:6px;" : ""}">
+        <div class="email-meta-row"><strong>De:</strong>${escapeHtml(de)}</div>
+        <div class="email-meta-row" style="${carpeta ? "" : "border-bottom:none;"}"><strong>Asunto:</strong>${escapeHtml(asunto)}</div>
+        ${carpeta ? `<div class="email-meta-row" style="border-bottom:none;"><strong>Carpeta original:</strong>${escapeHtml(carpeta)}</div>` : ""}
+        <div class="email-body">${escapeHtml(cuerpo || "(sin contenido de texto)")}</div>
+      </div>`;
+  }
+  return `<p style="font-size:13px; margin:2px 0 0; white-space:pre-wrap;">${escapeHtml(texto)}</p>`;
 }
 
 // ------------------------------------------------------------
@@ -691,16 +719,16 @@ function renderArchivados() {
         ${state.archivados.map((t) => {
           const buzon = BUZONES.find((b) => b.id === t.buzon) || BUZONES[0];
           return `
-          <tr>
-            <td class="row-check"><input type="checkbox" class="check-fila" data-check="${t.id}" ${state.seleccionados.has(t.id) ? "checked" : ""} /></td>
+          <tr class="row-clickable" data-open="${t.id}">
+            <td class="row-check"><input type="checkbox" class="check-fila" data-check="${t.id}" ${state.seleccionados.has(t.id) ? "checked" : ""} onclick="event.stopPropagation()" /></td>
             <td class="mono">${t.folio}</td>
             <td>${escapeHtml(t.tema)}</td>
             <td><span class="badge" style="background: color-mix(in srgb, ${buzon.color} 14%, white); color: ${buzon.color}">${buzon.label}</span></td>
             <td>${escapeHtml(t.categoria)}</td>
             <td>${escapeHtml(t.solicitante || "")}</td>
             <td>
-              <button class="btn-ghost" data-restaurar="${t.id}">${iconSvg("rotate-ccw", 13)} Restaurar</button>
-              <button class="btn-ghost" style="color:var(--alta); border-color:var(--alta);" data-eliminar-def="${t.id}">${iconSvg("x", 13)} Eliminar</button>
+              <button class="btn-ghost" data-restaurar="${t.id}" onclick="event.stopPropagation()">${iconSvg("rotate-ccw", 13)} Restaurar</button>
+              <button class="btn-ghost" style="color:var(--alta); border-color:var(--alta);" data-eliminar-def="${t.id}" onclick="event.stopPropagation()">${iconSvg("x", 13)} Eliminar</button>
             </td>
           </tr>`;
         }).join("")}
@@ -751,7 +779,7 @@ function drawChart() {
 }
 
 function renderModal() {
-  const t = state.tickets.find((x) => x.id === state.detalleId);
+  const t = state.tickets.find((x) => x.id === state.detalleId) || state.archivados.find((x) => x.id === state.detalleId);
   if (!t) return "";
   const hist = historialDe(t.id);
   const tab = state.modalTab;
@@ -783,9 +811,12 @@ function renderModal() {
             <input type="text" id="edit-solicitante" value="${escapeAttr(t.solicitante || "")}" />
           </div>
         </div>
-        <div style="display:flex; gap:8px; margin-top:14px;">
+        <div style="display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;">
           <button class="btn-ghost" id="btn-guardar-datos">Guardar datos</button>
-          <button class="btn-ghost" style="color:var(--alta); border-color:var(--alta);" id="btn-archivar-desde-modal">${iconSvg("archive", 13)} Archivar este ticket</button>
+          ${t.archivado
+            ? `<button class="btn-ghost" id="btn-restaurar-desde-modal">${iconSvg("rotate-ccw", 13)} Restaurar este ticket</button>`
+            : `<button class="btn-ghost" style="color:var(--alta); border-color:var(--alta);" id="btn-archivar-desde-modal">${iconSvg("archive", 13)} Archivar este ticket</button>`}
+          <button class="btn-ghost" style="color:var(--alta); border-color:var(--alta);" id="btn-eliminar-desde-modal">${iconSvg("x", 13)} Eliminar definitivamente</button>
         </div>
         ${t.transferencia ? `
         <div class="transfer-box" style="margin-top:18px;">
@@ -796,11 +827,11 @@ function renderModal() {
         </div>` : ""}`;
 
   const tabHistorial = `
-        <div class="history-box" style="max-height:320px;">
+        <div class="history-box" style="max-height:400px;">
           ${hist.length === 0 ? `<p class="muted" style="font-size:12.5px;">Sin movimientos aún.</p>` : hist.map((h) => `
             <div class="history-entry">
               <div class="h-meta">${fmtDate(h.created_at)} · ${h.tipo}</div>
-              <p style="font-size:13px; margin:2px 0 0;">${escapeHtml(h.texto)}</p>
+              ${renderHistorialEntry(h)}
             </div>`).join("")}
         </div>`;
 
@@ -1004,6 +1035,29 @@ function attachEvents() {
       state.archivadosCargados = false;
       cargarTodo();
     } catch (e) { showToast("No se pudo archivar", "error"); }
+  };
+  const btnRestaurarModal = document.getElementById("btn-restaurar-desde-modal");
+  if (btnRestaurarModal) btnRestaurarModal.onclick = async () => {
+    try {
+      await api("actualizar_ticket", { id: state.detalleId, patch: { archivado: false } });
+      showToast("Ticket restaurado");
+      state.detalleId = null;
+      state.archivadosCargados = false;
+      await cargarArchivados();
+      cargarTodo();
+    } catch (e) { showToast("No se pudo restaurar", "error"); }
+  };
+  const btnEliminarModal = document.getElementById("btn-eliminar-desde-modal");
+  if (btnEliminarModal) btnEliminarModal.onclick = async () => {
+    if (!confirm("¿Eliminar este ticket definitivamente? Esta acción NO se puede deshacer, se pierde todo su historial.")) return;
+    try {
+      await api("eliminar_definitivo", { id: state.detalleId });
+      showToast("Ticket eliminado definitivamente");
+      state.detalleId = null;
+      state.archivadosCargados = false;
+      await cargarArchivados();
+      cargarTodo();
+    } catch (e) { showToast("No se pudo eliminar", "error"); }
   };
   const btnNota = document.getElementById("btn-agregar-nota");
   if (btnNota) btnNota.onclick = agregarNota;
