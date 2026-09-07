@@ -32,6 +32,9 @@
     --admin: #4F46E5;
     --poliza: #BE185D;
     --comite: #78716C;
+    --sem-rojo: #DC2626;
+    --sem-amarillo: #D97706;
+    --sem-verde: #16A34A;
     --shadow-sm: 0 1px 2px rgba(21,24,27,0.06);
     --shadow-md: 0 6px 20px rgba(21,24,27,0.08);
     --radius: 14px;
@@ -277,6 +280,19 @@
   .email-meta-row { padding: 8px 12px; border-bottom: 1px solid var(--line); background: #FAFAF8; font-size: 12.5px; }
   .email-meta-row strong { color: var(--muted); font-weight: 700; margin-right: 4px; }
   .email-body { padding: 10px 12px; font-size: 13px; white-space: pre-wrap; line-height: 1.5; max-height: 220px; overflow-y: auto; }
+
+  .semaforo-grande {
+    display: flex; align-items: center; gap: 18px; padding: 22px 26px; border-radius: 16px;
+    background: color-mix(in srgb, var(--sem-color) 10%, var(--surface)); border: 1.5px solid var(--sem-color); margin-bottom: 20px;
+  }
+  .semaforo-luz { width: 46px; height: 46px; border-radius: 999px; background: var(--sem-color); flex-shrink: 0; box-shadow: 0 0 0 6px color-mix(in srgb, var(--sem-color) 18%, transparent); }
+  .semaforo-titulo { font-family: 'Space Grotesk', sans-serif; font-size: 19px; font-weight: 700; color: var(--sem-color); }
+  .semaforo-sub { font-size: 13.5px; color: var(--muted); margin-top: 2px; }
+
+  .ranking-cat { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); margin-bottom: 8px; }
+  .ranking-luz { width: 12px; height: 12px; border-radius: 999px; background: var(--sem-color); flex-shrink: 0; }
+  .ranking-nombre { font-weight: 700; font-size: 13.5px; flex: 1; }
+  .ranking-count { font-size: 12.5px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -297,7 +313,7 @@ const authClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.ANON_KEY);
 
 // Súbela cada vez que reemplaces este archivo, para saber a simple vista
 // qué versión tienes cargada (se muestra chica, junto al título).
-const APP_VERSION = "v1.7 · 5 sep 2026";
+const APP_VERSION = "v1.8 · 5 sep 2026";
 
 const ESTADOS = ["Nuevo", "En gestión", "Gasto Común", "Operaciones", "Administración", "Póliza", "Comité", "Esperando respuesta", "Resuelto"];
 const ESTADO_COLORS = {
@@ -320,7 +336,7 @@ const CATEGORIAS = [
 
 let state = {
   session: null, loginError: "", loginCargando: false,
-  tickets: [], historial: [], vista: "tablero", filtroBuzon: "todos", busqueda: "",
+  tickets: [], historial: [], vista: "inicio", filtroBuzon: "todos", busqueda: "",
   soloAbiertos: true, soloUrgentes: false, modoVista: "kanban",
   sortCampo: "prioridad", sortDir: "asc",
   modalTab: "datos",
@@ -509,6 +525,7 @@ function render() {
         ${urgentes > 0 ? `<button class="pill pill-warn clickable ${state.soloUrgentes ? "active-filter" : ""}" id="badge-urgentes">${iconSvg("alert-triangle", 15)} ${urgentes} sin gestión +3 días</button>` : ""}
         <button class="btn-ghost" id="toggle-resueltos">${state.soloAbiertos ? iconSvg("eye", 14) + " Ver resueltos" : iconSvg("eye-off", 14) + " Ocultar resueltos"}</button>
         <div class="view-toggle">
+          <button data-vista="inicio" class="${state.vista === "inicio" ? "active" : ""}">${iconSvg("sun", 14)} Inicio</button>
           <button data-vista="tablero" class="${state.vista === "tablero" ? "active" : ""}">${iconSvg("layout-grid", 14)} Tablero</button>
           <button data-vista="estadisticas" class="${state.vista === "estadisticas" ? "active" : ""}">${iconSvg("bar-chart-3", 14)} Estadísticas</button>
           <button data-vista="archivados" class="${state.vista === "archivados" ? "active" : ""}">${iconSvg("archive", 14)} Archivados</button>
@@ -547,7 +564,7 @@ function render() {
       </aside>
 
       <main class="board-area">
-        ${state.vista === "tablero" ? renderTablero() : state.vista === "estadisticas" ? renderEstadisticas() : renderArchivados()}
+        ${state.vista === "inicio" ? renderInicio() : state.vista === "tablero" ? renderTablero() : state.vista === "estadisticas" ? renderEstadisticas() : renderArchivados()}
       </main>
     </div>
 
@@ -734,6 +751,54 @@ function renderArchivados() {
         }).join("")}
       </tbody>
     </table>`;
+}
+
+const SEM_COLOR_VAR = { rojo: "var(--sem-rojo)", amarillo: "var(--sem-amarillo)", verde: "var(--sem-verde)" };
+
+function calcularSemaforo(tickets) {
+  if (tickets.length === 0) return "verde";
+  const hayAlta = tickets.some((t) => t.prioridad === "alta");
+  const hayAtrasado = tickets.some((t) => daysSince(t.last_activity_at) >= 3);
+  if (hayAlta || hayAtrasado) return "rojo";
+  return "amarillo";
+}
+
+function renderInicio() {
+  const abiertos = state.tickets.filter((t) => t.estado !== "Resuelto");
+  const semGeneral = calcularSemaforo(abiertos);
+  const altaCount = abiertos.filter((t) => t.prioridad === "alta").length;
+  const atrasadosCount = abiertos.filter((t) => daysSince(t.last_activity_at) >= 3).length;
+
+  const mensajes = {
+    rojo: `Hay ${altaCount} ticket${altaCount !== 1 ? "s" : ""} de prioridad alta y/o ${atrasadosCount} sin gestión hace 3+ días. Revisa el tablero antes de seguir.`,
+    amarillo: `${abiertos.length} ticket${abiertos.length !== 1 ? "s" : ""} abierto${abiertos.length !== 1 ? "s" : ""}, ninguno urgente ni atrasado por ahora.`,
+    verde: `Todo al día — no hay tickets pendientes.`,
+  };
+  const titulos = { rojo: "Atención necesaria hoy", amarillo: "Bajo control", verde: "Todo tranquilo" };
+
+  const porCategoria = {};
+  abiertos.forEach((t) => { (porCategoria[t.categoria] = porCategoria[t.categoria] || []).push(t); });
+  const ranking = Object.entries(porCategoria)
+    .map(([cat, arr]) => ({ cat, count: arr.length, sem: calcularSemaforo(arr) }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  return `
+    <div class="semaforo-grande" style="--sem-color: ${SEM_COLOR_VAR[semGeneral]}">
+      <div class="semaforo-luz"></div>
+      <div>
+        <div class="semaforo-titulo">${titulos[semGeneral]}</div>
+        <div class="semaforo-sub">${mensajes[semGeneral]}</div>
+      </div>
+    </div>
+
+    <h3 style="font-size:14px; margin-bottom:10px;">Qué está pidiendo más atención</h3>
+    ${ranking.length === 0 ? `<p class="muted" style="font-size:13px;">No hay tickets abiertos por categoría todavía.</p>` : ranking.map((r) => `
+      <div class="ranking-cat" style="--sem-color: ${SEM_COLOR_VAR[r.sem]}">
+        <span class="ranking-luz"></span>
+        <span class="ranking-nombre">${escapeHtml(r.cat)}</span>
+        <span class="ranking-count">${r.count} ticket${r.count !== 1 ? "s" : ""} abierto${r.count !== 1 ? "s" : ""}</span>
+      </div>`).join("")}`;
 }
 
 function renderEstadisticas() {
