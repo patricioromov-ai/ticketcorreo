@@ -313,7 +313,7 @@ const authClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.ANON_KEY);
 
 // Súbela cada vez que reemplaces este archivo, para saber a simple vista
 // qué versión tienes cargada (se muestra chica, junto al título).
-const APP_VERSION = "v1.8 · 5 sep 2026";
+const APP_VERSION = "v1.9 · 9 sep 2026";
 
 const ESTADOS = ["Nuevo", "En gestión", "Gasto Común", "Operaciones", "Administración", "Póliza", "Comité", "Esperando respuesta", "Resuelto"];
 const ESTADO_COLORS = {
@@ -889,6 +889,12 @@ function renderModal() {
           <p>Monto: ${t.transferencia.monto || "—"} · Fecha: ${t.transferencia.fecha || "—"}</p>
           <p>Banco: ${t.transferencia.banco_origen || "—"} · Titular: ${t.transferencia.titular || "—"}</p>
           <p>Referencia: ${t.transferencia.referencia_u_operacion || "—"}</p>
+        </div>` : ""}
+        ${t.estado !== "Resuelto" ? `
+        <div style="margin-top:18px; padding-top:16px; border-top:1px solid var(--line);">
+          <h4 style="font-size:14px; margin-bottom:8px; color:var(--resuelto);">${iconSvg("check-circle-2", 15)} Marcar como Resuelto</h4>
+          <textarea id="texto-cierre" rows="2" placeholder="¿Qué se hizo o qué se le respondió? (opcional, queda en el historial)"></textarea>
+          <button class="btn-primary" id="btn-marcar-resuelto" style="width:auto; margin-top:8px; background: linear-gradient(135deg, var(--resuelto), #0e7a30);">${iconSvg("check-circle-2", 14)} Marcar como Resuelto</button>
         </div>` : ""}`;
 
   const tabHistorial = `
@@ -1123,6 +1129,20 @@ function attachEvents() {
       await cargarArchivados();
       cargarTodo();
     } catch (e) { showToast("No se pudo eliminar", "error"); }
+  };
+  const btnMarcarResuelto = document.getElementById("btn-marcar-resuelto");
+  if (btnMarcarResuelto) btnMarcarResuelto.onclick = async () => {
+    const texto = document.getElementById("texto-cierre").value.trim();
+    if (!confirm("¿Marcar este ticket como Resuelto?")) return;
+    try {
+      if (texto) {
+        await api("agregar_historial", { id: state.detalleId, tipo: "respuesta", texto: `Gestión de cierre: ${texto}` });
+      }
+      await api("actualizar_ticket", { id: state.detalleId, patch: { estado: "Resuelto" } });
+      showToast("Ticket marcado como Resuelto ✓");
+      state.detalleId = null;
+      cargarTodo();
+    } catch (e) { showToast("No se pudo marcar como resuelto", "error"); }
   };
   const btnNota = document.getElementById("btn-agregar-nota");
   if (btnNota) btnNota.onclick = agregarNota;
