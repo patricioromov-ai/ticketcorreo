@@ -139,7 +139,20 @@
   .board { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 10px; align-items: flex-start; }
   .board-col { flex: 0 0 290px; min-width: 290px; }
   .column-body { display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 320px); min-height: 80px; overflow-y: auto; padding-right: 4px; }
-  @media (max-width: 640px) { .board-col { flex-basis: 82vw; min-width: 82vw; } .layout { flex-direction: column; } aside.composer { width: 100%; position: static; } }
+  @media (max-width: 640px) {
+    .board-col { flex-basis: 82vw; min-width: 82vw; }
+    .layout { flex-direction: column; padding: 16px; }
+    aside.composer { width: 100%; position: static; }
+    header.topbar { padding: 14px 16px; }
+    h1.title { font-size: 18px; }
+    .semaforo-grande { padding: 16px; gap: 12px; }
+    .semaforo-luz { width: 34px; height: 34px; }
+    .semaforo-titulo { font-size: 16px; }
+    .lectura-bar { padding: 8px 16px; flex-wrap: wrap; }
+    .modal { max-height: calc(100vh - 24px); border-radius: 14px; }
+    .overlay { padding: 8px; }
+    .modal-header, .tabs-row-sticky, .modal-scroll { padding-left: 16px; padding-right: 16px; }
+  }
 
   .column-header {
     display: flex; align-items: center; gap: 8px; padding: 10px 12px;
@@ -255,7 +268,8 @@
   .mode-toggle button { border: none; background: transparent; color: var(--muted); padding: 9px 14px; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
   .mode-toggle button.active { background: var(--ink); color: #fff; }
 
-  table.ticket-table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+  .table-scroll { overflow-x: auto; border-radius: 12px; }
+  table.ticket-table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 12px; overflow: hidden; border: 1px solid var(--line); min-width: 640px; }
   table.ticket-table th { text-align: left; font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; padding: 12px; border-bottom: 1px solid var(--line); cursor: pointer; user-select: none; white-space: nowrap; }
   table.ticket-table th:hover { color: var(--ink); }
   table.ticket-table td { padding: 12px; border-bottom: 1px solid var(--line); font-size: 13.5px; vertical-align: middle; }
@@ -275,7 +289,7 @@
 
   .bulk-bar {
     display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1.5px solid var(--accent);
-    border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; font-weight: 600;
+    border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; font-weight: 600; flex-wrap: wrap;
   }
   .bulk-bar button { flex-shrink: 0; }
   .row-check { width: 34px; }
@@ -318,7 +332,7 @@ const authClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.ANON_KEY);
 
 // Súbela cada vez que reemplaces este archivo, para saber a simple vista
 // qué versión tienes cargada (se muestra chica, junto al título).
-const APP_VERSION = "v2.0 · 9 sep 2026";
+const APP_VERSION = "v2.2 · 9 sep 2026";
 
 const ESTADOS = ["Nuevo", "En gestión", "Gasto Común", "Operaciones", "Administración", "Póliza", "Comité", "Esperando respuesta", "Resuelto"];
 const ESTADO_COLORS = {
@@ -347,7 +361,8 @@ let state = {
   modalTab: "datos",
   archivados: [], archivadosCargados: false, historialArchivados: [],
   seleccionados: new Set(),
-  lecturaActiva: null, lecturaIncluyeGastos: false,
+  lecturaActiva: null, lecturaIncluyeGastos: false, gastoIA: null,
+  mostrarLeyenda: false, plantillas: [], plantillasCargadas: false,
   cargando: false, error: "", procesandoNuevo: false, imagenNueva: null,
   detalleId: null, chartInstance: null,
 };
@@ -450,6 +465,7 @@ async function cargarTodo() {
     state.cargando = false; render();
   }
   cargarEstadoLectura();
+  cargarGastoIA();
 }
 
 async function cargarEstadoLectura() {
@@ -459,6 +475,44 @@ async function cargarEstadoLectura() {
     state.lecturaIncluyeGastos = !!r.incluye_gastos;
     render();
   } catch (e) { /* si falla, simplemente no se muestra el botón */ }
+}
+
+async function cargarGastoIA() {
+  try {
+    const r = await api("consultar_gasto_ia", {});
+    state.gastoIA = r;
+    render();
+  } catch (e) { /* si falla, simplemente no se muestra la tarjeta de gasto */ }
+}
+
+// Cola de tickets por urgencia (misma lógica que el orden del Kanban),
+// usada para poder navegar de un ticket al siguiente sin volver al panel.
+function colaUrgencia() {
+  return [...state.tickets].sort((a, b) => {
+    const pr = PRIORIDAD_RANK[a.prioridad] - PRIORIDAD_RANK[b.prioridad];
+    if (pr !== 0) return pr;
+    return new Date(a.last_activity_at) - new Date(b.last_activity_at);
+  });
+}
+
+function irTicketAdyacente(direccion) {
+  const cola = colaUrgencia();
+  if (cola.length === 0) { state.detalleId = null; render(); return; }
+  const idx = cola.findIndex((t) => t.id === state.detalleId);
+  const nuevoIdx = idx === -1 ? 0 : (idx + direccion + cola.length) % cola.length;
+  state.detalleId = cola[nuevoIdx].id;
+  state.modalTab = "datos";
+  render();
+}
+
+// Después de resolver/archivar/eliminar/restaurar un ticket desde el modal,
+// salta directo al siguiente que necesite revisión en vez de cerrar todo.
+async function avanzarAlSiguientePendiente() {
+  await cargarTodo();
+  const cola = colaUrgencia();
+  state.detalleId = cola.length > 0 ? cola[0].id : null;
+  state.modalTab = "datos";
+  render();
 }
 
 async function alternarLectura() {
@@ -471,6 +525,54 @@ async function alternarLectura() {
   } catch (e) {
     showToast("No se pudo cambiar el estado", "error");
   }
+}
+
+async function cargarPlantillas() {
+  try {
+    const { plantillas } = await api("listar_plantillas", {});
+    state.plantillas = plantillas || [];
+    state.plantillasCargadas = true;
+    render();
+  } catch (e) { /* sin plantillas por ahora */ }
+}
+
+async function crearPlantilla() {
+  const nombre = document.getElementById("nueva-plantilla-nombre").value.trim();
+  const texto = document.getElementById("nueva-plantilla-texto").value.trim();
+  if (!nombre || !texto) return;
+  try {
+    await api("crear_plantilla", { nombre, texto });
+    showToast("Plantilla guardada");
+    await cargarPlantillas();
+  } catch (e) { showToast("No se pudo guardar la plantilla", "error"); }
+}
+
+async function eliminarPlantilla(id) {
+  if (!confirm("¿Eliminar esta plantilla?")) return;
+  try {
+    await api("eliminar_plantilla", { id });
+    await cargarPlantillas();
+  } catch (e) { showToast("No se pudo eliminar la plantilla", "error"); }
+}
+
+async function usarPlantilla(id) {
+  const p = state.plantillas.find((x) => x.id === Number(id));
+  if (!p) return;
+  const zona = document.getElementById("zona-plantilla-usada");
+  zona.innerHTML = `
+    <div class="ai-suggestion">${escapeHtml(p.texto)}
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; gap:8px; flex-wrap:wrap;">
+        <span class="muted" style="font-size:12px;">Al copiar, se registra en el historial y pasa a "Esperando respuesta".</span>
+        <button class="btn-ghost" id="btn-copiar-plantilla" style="flex-shrink:0;">${iconSvg("copy", 13)} Copiar</button>
+      </div>
+    </div>`;
+  document.getElementById("btn-copiar-plantilla").onclick = async () => {
+    await navigator.clipboard.writeText(p.texto);
+    await api("registrar_respuesta_enviada", { id: state.detalleId, texto: p.texto });
+    showToast("Copiado y ticket movido a \"Esperando respuesta\"");
+    await cargarTodo();
+    document.getElementById("btn-copiar-plantilla").innerHTML = iconSvg("check", 13) + " Copiado";
+  };
 }
 
 async function cargarArchivados() {
@@ -535,6 +637,7 @@ function render() {
           <button data-vista="estadisticas" class="${state.vista === "estadisticas" ? "active" : ""}">${iconSvg("bar-chart-3", 14)} Estadísticas</button>
           <button data-vista="archivados" class="${state.vista === "archivados" ? "active" : ""}">${iconSvg("archive", 14)} Archivados</button>
         </div>
+        <button class="icon-btn" id="btn-leyenda" aria-label="Ver leyenda de colores" title="Leyenda de colores">${iconSvg("help-circle", 18)}</button>
         <button class="icon-btn" id="btn-logout" aria-label="Cerrar sesión" title="Cerrar sesión">${iconSvg("log-out", 18)}</button>
       </div>
     </header>
@@ -574,6 +677,7 @@ function render() {
     </div>
 
     ${state.detalleId ? renderModal() : ""}
+    ${state.mostrarLeyenda ? renderLeyenda() : ""}
   `;
 
   lucide.createIcons();
@@ -651,11 +755,16 @@ function renderTabla(visibles) {
   const barra = seleccionActual.length > 0 ? `
     <div class="bulk-bar">
       ${iconSvg("check-circle-2", 15)} ${seleccionActual.length} seleccionado${seleccionActual.length > 1 ? "s" : ""}
+      <select id="bulk-estado-select" style="max-width:190px;">
+        ${ESTADOS.map((e) => `<option value="${e}">${e}</option>`).join("")}
+      </select>
+      <button class="btn-ghost" id="btn-cambiar-estado-seleccion">${iconSvg("move", 13)} Mover a este estado</button>
       <button class="btn-ghost" id="btn-archivar-seleccion">${iconSvg("archive", 13)} Archivar seleccionados</button>
       <button class="btn-ghost" id="btn-cancelar-seleccion" style="margin-left:auto;">Cancelar</button>
     </div>` : "";
 
   return barra + `
+    <div class="table-scroll">
     <table class="ticket-table">
       <thead><tr>
         <th class="row-check"><input type="checkbox" id="check-todos" ${todosMarcados ? "checked" : ""} /></th>
@@ -681,7 +790,8 @@ function renderTabla(visibles) {
           </tr>`;
         }).join("")}
       </tbody>
-    </table>`;
+    </table>
+    </div>`;
 }
 
 function renderCard(t) {
@@ -732,6 +842,7 @@ function renderArchivados() {
     </div>` : "";
 
   return barra + `
+    <div class="table-scroll">
     <table class="ticket-table">
       <thead><tr>
         <th class="row-check"><input type="checkbox" id="check-todos" ${todosMarcados ? "checked" : ""} /></th>
@@ -755,7 +866,8 @@ function renderArchivados() {
           </tr>`;
         }).join("")}
       </tbody>
-    </table>`;
+    </table>
+    </div>`;
 }
 
 const SEM_COLOR_VAR = { rojo: "var(--sem-rojo)", amarillo: "var(--sem-amarillo)", verde: "var(--sem-verde)" };
@@ -766,6 +878,30 @@ function calcularSemaforo(tickets) {
   const hayAtrasado = tickets.some((t) => daysSince(t.last_activity_at) >= 3);
   if (hayAlta || hayAtrasado) return "rojo";
   return "amarillo";
+}
+
+const TOPE_MENSUAL_REFERENCIA = 10; // ajusta este número para que coincida con el tope que definiste en Anthropic
+
+function renderLeyenda() {
+  return `
+    <div class="overlay" id="overlay-leyenda">
+      <div class="modal" style="max-width:420px;">
+        <div class="modal-header">
+          <h3 style="font-size:16px;">Leyenda de colores</h3>
+          <button class="icon-btn" id="cerrar-leyenda" aria-label="Cerrar">${iconSvg("x", 20)}</button>
+        </div>
+        <div class="modal-scroll">
+          <h4 style="font-size:12.5px; color:var(--muted); text-transform:uppercase; margin-bottom:8px;">Estado del ticket</h4>
+          ${ESTADOS.map((e) => `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13.5px;"><span style="width:12px; height:12px; border-radius:999px; background:${ESTADO_COLORS[e]};"></span>${e}</div>`).join("")}
+
+          <h4 style="font-size:12.5px; color:var(--muted); text-transform:uppercase; margin:16px 0 8px;">Buzón</h4>
+          ${BUZONES.map((b) => `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13.5px;"><span style="width:12px; height:12px; border-radius:999px; background:${b.color};"></span>${b.label}</div>`).join("")}
+
+          <h4 style="font-size:12.5px; color:var(--muted); text-transform:uppercase; margin:16px 0 8px;">Prioridad</h4>
+          ${["alta", "media", "baja"].map((p) => `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13.5px; text-transform:capitalize;"><span style="width:12px; height:12px; border-radius:999px; background:${PRIORIDAD_COLORS[p]};"></span>${p}</div>`).join("")}
+        </div>
+      </div>
+    </div>`;
 }
 
 function renderInicio() {
@@ -788,6 +924,10 @@ function renderInicio() {
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
+  const gasto = state.gastoIA;
+  const gastoPct = gasto ? Math.min(100, (gasto.total_usd / TOPE_MENSUAL_REFERENCIA) * 100) : 0;
+  const gastoColor = gastoPct >= 90 ? "var(--sem-rojo)" : gastoPct >= 70 ? "var(--sem-amarillo)" : "var(--sem-verde)";
+
   return `
     <div class="semaforo-grande" style="--sem-color: ${SEM_COLOR_VAR[semGeneral]}">
       <div class="semaforo-luz"></div>
@@ -796,6 +936,18 @@ function renderInicio() {
         <div class="semaforo-sub">${mensajes[semGeneral]}</div>
       </div>
     </div>
+
+    ${gasto ? `
+    <div class="panel" style="margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <h4 style="font-size:13.5px;">${iconSvg("sparkles", 14)} Gasto de IA este mes</h4>
+        <span style="font-size:13px; font-weight:700; color:${gastoColor}">$${gasto.total_usd.toFixed(2)} <span class="muted" style="font-weight:400;">de ~$${TOPE_MENSUAL_REFERENCIA.toFixed(2)} de referencia</span></span>
+      </div>
+      <div style="background:#EEEEE9; border-radius:999px; height:8px; overflow:hidden;">
+        <div style="background:${gastoColor}; height:100%; width:${gastoPct}%; border-radius:999px;"></div>
+      </div>
+      <p class="muted" style="font-size:11.5px; margin-top:6px;">${gasto.llamadas} llamadas a la IA este mes · el tope real se controla en console.anthropic.com</p>
+    </div>` : ""}
 
     <h3 style="font-size:14px; margin-bottom:10px;">Qué está pidiendo más atención</h3>
     ${ranking.length === 0 ? `<p class="muted" style="font-size:13px;">No hay tickets abiertos por categoría todavía.</p>` : ranking.map((r) => `
@@ -933,6 +1085,32 @@ function renderModal() {
         <button class="btn-ghost" id="btn-sugerir">${iconSvg("sparkles", 13)} Generar sugerencia</button>
         <div id="zona-sugerencia" style="margin-top:10px;"></div>
 
+        <h4 style="font-size:14px; margin:18px 0 8px;">${iconSvg("file-text", 15)} Plantillas de respuesta (sin IA)</h4>
+        ${state.plantillas.length === 0 ? `<p class="muted" style="font-size:12.5px;">Sin plantillas guardadas todavía.</p>` : `
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <select id="select-plantilla" style="max-width:260px;">
+            <option value="">Elige una plantilla…</option>
+            ${state.plantillas.map((p) => `<option value="${p.id}">${escapeHtml(p.nombre)}</option>`).join("")}
+          </select>
+          <button class="btn-ghost" id="btn-usar-plantilla">Usar</button>
+        </div>`}
+        <div id="zona-plantilla-usada" style="margin-top:10px;"></div>
+        <details style="margin-top:10px;">
+          <summary style="cursor:pointer; font-size:12.5px; color:var(--accent); font-weight:600;">Gestionar plantillas</summary>
+          <div style="margin-top:8px;">
+            ${state.plantillas.map((p) => `
+              <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--line); font-size:13px;">
+                <span>${escapeHtml(p.nombre)}</span>
+                <button class="icon-btn" data-eliminar-plantilla="${p.id}" aria-label="Eliminar plantilla">${iconSvg("trash-2", 14)}</button>
+              </div>`).join("")}
+            <label class="field-label" style="margin-top:10px;">Nombre</label>
+            <input type="text" id="nueva-plantilla-nombre" placeholder="Ej: Cómo pagar el gasto común" />
+            <label class="field-label">Texto</label>
+            <textarea id="nueva-plantilla-texto" rows="3" placeholder="Texto de la respuesta…"></textarea>
+            <button class="btn-ghost" id="btn-crear-plantilla" style="margin-top:8px;">${iconSvg("plus", 13)} Guardar plantilla nueva</button>
+          </div>
+        </details>
+
         <h4 style="font-size:14px; margin:18px 0 8px;">${iconSvg("check-circle-2", 15)} Confirmar respuesta final enviada</h4>
         <p class="muted" style="font-size:12.5px; margin-bottom:8px;">Si editaste el borrador antes de enviarlo desde Outlook, pega aquí el texto final real — así el historial queda fiel a lo que realmente se le dijo al residente.</p>
         <textarea id="texto-respuesta-final" rows="3" placeholder="Pega aquí el texto final que enviaste…"></textarea>
@@ -943,7 +1121,11 @@ function renderModal() {
       <div class="modal">
         <div class="modal-header">
           <h3 style="font-size:16px;">${t.folio} · <span style="color:${ESTADO_COLORS[t.estado]}">${t.estado}</span> <span class="muted" style="font-weight:400; font-size:13px;">· ${fmtDate(t.created_at)}</span></h3>
-          <button class="icon-btn" id="cerrar-modal" aria-label="Cerrar">${iconSvg("x", 22)}</button>
+          <div style="display:flex; align-items:center; gap:4px;">
+            <button class="icon-btn" id="ticket-anterior" aria-label="Ticket anterior" title="Anterior">${iconSvg("chevron-left", 20)}</button>
+            <button class="icon-btn" id="ticket-siguiente" aria-label="Siguiente ticket" title="Siguiente">${iconSvg("chevron-right", 20)}</button>
+            <button class="icon-btn" id="cerrar-modal" aria-label="Cerrar" style="margin-left:6px;">${iconSvg("x", 22)}</button>
+          </div>
         </div>
         <div class="tabs-row tabs-row-sticky">
           <button class="tab-btn ${tab === "datos" ? "active" : ""}" data-tab="datos">Datos</button>
@@ -976,6 +1158,13 @@ function attachEvents() {
 
   const badgeUrgentes = document.getElementById("badge-urgentes");
   if (badgeUrgentes) badgeUrgentes.onclick = () => { state.soloUrgentes = !state.soloUrgentes; state.vista = "tablero"; render(); };
+
+  const btnLeyenda = document.getElementById("btn-leyenda");
+  if (btnLeyenda) btnLeyenda.onclick = () => { state.mostrarLeyenda = true; render(); };
+  const cerrarLeyenda = document.getElementById("cerrar-leyenda");
+  if (cerrarLeyenda) cerrarLeyenda.onclick = () => { state.mostrarLeyenda = false; render(); };
+  const overlayLeyenda = document.getElementById("overlay-leyenda");
+  if (overlayLeyenda) overlayLeyenda.onclick = (e) => { if (e.target.id === "overlay-leyenda") { state.mostrarLeyenda = false; render(); } };
 
   const btnLogout = document.getElementById("btn-logout");
   if (btnLogout) btnLogout.onclick = () => { if (confirm("¿Cerrar sesión?")) cerrarSesion(); };
@@ -1057,6 +1246,17 @@ function attachEvents() {
     cargarTodo();
   };
 
+  const btnCambiarEstadoSeleccion = document.getElementById("btn-cambiar-estado-seleccion");
+  if (btnCambiarEstadoSeleccion) btnCambiarEstadoSeleccion.onclick = async () => {
+    const ids = [...state.seleccionados];
+    const nuevoEstado = document.getElementById("bulk-estado-select").value;
+    if (!confirm(`¿Mover ${ids.length} tickets a "${nuevoEstado}"?`)) return;
+    for (const id of ids) { try { await api("actualizar_ticket", { id, patch: { estado: nuevoEstado } }); } catch (e) { /* sigue con el resto */ } }
+    showToast(`${ids.length} tickets movidos a "${nuevoEstado}"`);
+    state.seleccionados.clear();
+    cargarTodo();
+  };
+
   const btnRestaurarSeleccion = document.getElementById("btn-restaurar-seleccion");
   if (btnRestaurarSeleccion) btnRestaurarSeleccion.onclick = async () => {
     const ids = [...state.seleccionados];
@@ -1105,7 +1305,11 @@ function attachEvents() {
   if (overlay) overlay.onclick = (e) => { if (e.target.id === "overlay") { state.detalleId = null; render(); } };
   const cerrar = document.getElementById("cerrar-modal");
   if (cerrar) cerrar.onclick = () => { state.detalleId = null; render(); };
-  document.querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => { state.modalTab = b.dataset.tab; render(); });
+  document.querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => {
+    state.modalTab = b.dataset.tab;
+    if (b.dataset.tab === "responder" && !state.plantillasCargadas) cargarPlantillas();
+    render();
+  });
 
   const btnGuardar = document.getElementById("btn-guardar-datos");
   if (btnGuardar) btnGuardar.onclick = guardarDatosTicket;
@@ -1114,10 +1318,9 @@ function attachEvents() {
     if (!confirm("¿Archivar este ticket? Se quita del tablero pero su historial no se pierde.")) return;
     try {
       await api("archivar_ticket", { id: state.detalleId });
-      showToast("Ticket archivado");
-      state.detalleId = null;
+      showToast("Ticket archivado — mostrando el siguiente pendiente");
       state.archivadosCargados = false;
-      cargarTodo();
+      await avanzarAlSiguientePendiente();
     } catch (e) { showToast("No se pudo archivar", "error"); }
   };
   const btnRestaurarModal = document.getElementById("btn-restaurar-desde-modal");
@@ -1137,10 +1340,9 @@ function attachEvents() {
     try {
       await api("eliminar_definitivo", { id: state.detalleId });
       showToast("Ticket eliminado definitivamente");
-      state.detalleId = null;
       state.archivadosCargados = false;
       await cargarArchivados();
-      cargarTodo();
+      await avanzarAlSiguientePendiente();
     } catch (e) { showToast("No se pudo eliminar", "error"); }
   };
   const btnMarcarResuelto = document.getElementById("btn-marcar-resuelto");
@@ -1152,11 +1354,14 @@ function attachEvents() {
         await api("agregar_historial", { id: state.detalleId, tipo: "respuesta", texto: `Gestión de cierre: ${texto}` });
       }
       await api("actualizar_ticket", { id: state.detalleId, patch: { estado: "Resuelto" } });
-      showToast("Ticket marcado como Resuelto ✓");
-      state.detalleId = null;
-      cargarTodo();
+      showToast("Resuelto ✓ — mostrando el siguiente pendiente");
+      await avanzarAlSiguientePendiente();
     } catch (e) { showToast("No se pudo marcar como resuelto", "error"); }
   };
+  const btnTicketAnterior = document.getElementById("ticket-anterior");
+  if (btnTicketAnterior) btnTicketAnterior.onclick = () => irTicketAdyacente(-1);
+  const btnTicketSiguiente = document.getElementById("ticket-siguiente");
+  if (btnTicketSiguiente) btnTicketSiguiente.onclick = () => irTicketAdyacente(1);
   const btnNota = document.getElementById("btn-agregar-nota");
   if (btnNota) btnNota.onclick = agregarNota;
   const btnReprocesar = document.getElementById("btn-reprocesar");
@@ -1165,6 +1370,15 @@ function attachEvents() {
   if (btnSugerir) btnSugerir.onclick = generarSugerencia;
   const btnConfirmarFinal = document.getElementById("btn-confirmar-final");
   if (btnConfirmarFinal) btnConfirmarFinal.onclick = confirmarRespuestaFinal;
+
+  const btnUsarPlantilla = document.getElementById("btn-usar-plantilla");
+  if (btnUsarPlantilla) btnUsarPlantilla.onclick = () => {
+    const id = document.getElementById("select-plantilla").value;
+    if (id) usarPlantilla(id);
+  };
+  const btnCrearPlantilla = document.getElementById("btn-crear-plantilla");
+  if (btnCrearPlantilla) btnCrearPlantilla.onclick = crearPlantilla;
+  document.querySelectorAll("[data-eliminar-plantilla]").forEach((b) => b.onclick = () => eliminarPlantilla(Number(b.dataset.eliminarPlantilla)));
 }
 
 async function crearTicket() {
