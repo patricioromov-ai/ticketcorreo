@@ -32,6 +32,8 @@
     --admin: #4F46E5;
     --poliza: #BE185D;
     --comite: #78716C;
+    --mudanza: #65A30D;
+    --tarjeta: #EAB308;
     --sem-rojo: #DC2626;
     --sem-amarillo: #D97706;
     --sem-verde: #16A34A;
@@ -332,11 +334,12 @@ const authClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.ANON_KEY);
 
 // Súbela cada vez que reemplaces este archivo, para saber a simple vista
 // qué versión tienes cargada (se muestra chica, junto al título).
-const APP_VERSION = "v2.2 · 9 sep 2026";
+const APP_VERSION = "v2.4 · 9 sep 2026";
 
-const ESTADOS = ["Nuevo", "En gestión", "Gasto Común", "Operaciones", "Administración", "Póliza", "Comité", "Esperando respuesta", "Resuelto"];
+const ESTADOS = ["Nuevo", "En gestión", "Mudanza", "Tarjeta", "Gasto Común", "Operaciones", "Administración", "Póliza", "Comité", "Esperando respuesta", "Resuelto"];
 const ESTADO_COLORS = {
   "Nuevo": "var(--nuevo)", "En gestión": "var(--gestion)",
+  "Mudanza": "var(--mudanza)", "Tarjeta": "var(--tarjeta)",
   "Gasto Común": "var(--gc)", "Operaciones": "var(--ops)", "Administración": "var(--admin)",
   "Póliza": "var(--poliza)", "Comité": "var(--comite)",
   "Esperando respuesta": "var(--espera)", "Resuelto": "var(--resuelto)",
@@ -1407,6 +1410,7 @@ async function crearTicket() {
 async function guardarDatosTicket() {
   const id = state.detalleId;
   const nuevoEstado = document.getElementById("edit-estado").value;
+  const nuevoBuzon = document.getElementById("edit-buzon").value;
   const ticketActual = state.tickets.find((t) => t.id === id) || state.archivados.find((t) => t.id === id);
   if (nuevoEstado === "Resuelto" && ticketActual && ticketActual.estado !== "Resuelto") {
     if (!confirm("¿Confirmas que este ticket quedó resuelto?")) return;
@@ -1414,13 +1418,17 @@ async function guardarDatosTicket() {
   const patch = {
     tema: document.getElementById("edit-tema").value,
     resumen: document.getElementById("edit-resumen").value,
-    buzon: document.getElementById("edit-buzon").value,
+    buzon: nuevoBuzon,
     prioridad: document.getElementById("edit-prioridad").value,
     categoria: document.getElementById("edit-categoria").value,
     solicitante: document.getElementById("edit-solicitante").value,
     estado: nuevoEstado,
     needs_review: false,
   };
+  if (ticketActual && ticketActual.buzon !== nuevoBuzon) {
+    const nombreBuzon = (id) => (BUZONES.find((b) => b.id === id) || {}).label || id;
+    await api("agregar_historial", { id, tipo: "estado", texto: `Ticket derivado de "${nombreBuzon(ticketActual.buzon)}" a "${nombreBuzon(nuevoBuzon)}".` });
+  }
   await api("actualizar_ticket", { id, patch });
   showToast("Datos guardados ✓");
   await cargarTodo();
