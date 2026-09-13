@@ -334,7 +334,7 @@ const authClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.ANON_KEY);
 
 // Súbela cada vez que reemplaces este archivo, para saber a simple vista
 // qué versión tienes cargada (se muestra chica, junto al título).
-const APP_VERSION = "v2.4 · 9 sep 2026";
+const APP_VERSION = "v2.5 · 9 sep 2026";
 
 const ESTADOS = ["Nuevo", "En gestión", "Mudanza", "Tarjeta", "Gasto Común", "Operaciones", "Administración", "Póliza", "Comité", "Esperando respuesta", "Resuelto"];
 const ESTADO_COLORS = {
@@ -364,6 +364,7 @@ let state = {
   modalTab: "datos",
   archivados: [], archivadosCargados: false, historialArchivados: [],
   seleccionados: new Set(),
+  composerAbierto: window.innerWidth > 900,
   lecturaActiva: null, lecturaIncluyeGastos: false, gastoIA: null,
   mostrarLeyenda: false, plantillas: [], plantillasCargadas: false,
   cargando: false, error: "", procesandoNuevo: false, imagenNueva: null,
@@ -656,7 +657,11 @@ function render() {
     <div class="layout">
       <aside class="composer relative">
         ${state.procesandoNuevo ? `<div class="loading-overlay"><div class="loading-chip">${iconSvg("loader-2", 14, "spin")} Leyendo correo…</div></div>` : ""}
-        <h2>${iconSvg("message-square-plus", 17)} Nuevo ticket</h2>
+        <button id="toggle-composer" style="display:flex; align-items:center; justify-content:space-between; width:100%; background:none; border:none; padding:0; cursor:pointer;">
+          <h2 style="margin:0;">${iconSvg("message-square-plus", 17)} Nuevo ticket</h2>
+          ${iconSvg(state.composerAbierto ? "chevron-up" : "chevron-down", 18)}
+        </button>
+        ${state.composerAbierto ? `
         <p class="hint">Pega el correo y/o adjunta el comprobante si viene como imagen.</p>
         <textarea id="texto-nuevo" rows="8" placeholder="De: ...&#10;Para: gastoscomunes@jdvm.cl&#10;Asunto: ...&#10;&#10;Pega aquí el cuerpo del correo"></textarea>
         <label class="file-drop">
@@ -671,7 +676,7 @@ function render() {
         <button class="btn-primary" id="btn-crear" ${state.procesandoNuevo ? "disabled" : ""}>
           ${iconSvg("sparkles", 16)} Procesar con IA
         </button>
-        ${state.error ? `<p class="error-text">${state.error}</p>` : ""}
+        ${state.error ? `<p class="error-text">${state.error}</p>` : ""}` : ""}
       </aside>
 
       <main class="board-area">
@@ -1295,6 +1300,9 @@ function attachEvents() {
     } catch (e) { showToast("No se pudo actualizar el estado", "error"); }
   });
 
+  const toggleComposer = document.getElementById("toggle-composer");
+  if (toggleComposer) toggleComposer.onclick = () => { state.composerAbierto = !state.composerAbierto; render(); };
+
   const imgNueva = document.getElementById("imagen-nueva");
   if (imgNueva) imgNueva.onchange = () => {
     state.imagenNueva = imgNueva.files[0] || null;
@@ -1398,6 +1406,7 @@ async function crearTicket() {
     await api("crear_ticket", payload);
     state.imagenNueva = null;
     showToast("Ticket creado ✓");
+    if (window.innerWidth <= 900) state.composerAbierto = false;
     await cargarTodo();
   } catch (e) {
     state.error = "No se pudo procesar. Intenta de nuevo.";
