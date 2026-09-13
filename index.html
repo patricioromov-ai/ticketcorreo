@@ -42,6 +42,7 @@
     --radius: 14px;
   }
   * { box-sizing: border-box; }
+  html, body { max-width: 100%; overflow-x: hidden; }
   body {
     margin: 0;
     background: var(--bg);
@@ -283,7 +284,7 @@
   .pill-warn.clickable.active-filter { background: var(--alta); color: #fff; }
 
   .lectura-bar {
-    display: flex; align-items: center; gap: 10px; padding: 9px 28px;
+    display: flex; align-items: center; gap: 10px; padding: 9px 28px; flex-wrap: wrap;
     background: color-mix(in srgb, var(--lectura-color) 8%, var(--surface));
     border-bottom: 1px solid var(--line); font-size: 13px;
   }
@@ -334,7 +335,7 @@ const authClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.ANON_KEY);
 
 // Súbela cada vez que reemplaces este archivo, para saber a simple vista
 // qué versión tienes cargada (se muestra chica, junto al título).
-const APP_VERSION = "v2.5 · 9 sep 2026";
+const APP_VERSION = "v2.6 · 9 sep 2026";
 
 const ESTADOS = ["Nuevo", "En gestión", "Mudanza", "Tarjeta", "Gasto Común", "Operaciones", "Administración", "Póliza", "Comité", "Esperando respuesta", "Resuelto"];
 const ESTADO_COLORS = {
