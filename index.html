@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>JDVM · Seguimiento de correos</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
@@ -133,6 +133,8 @@
 
   main.board-area { flex: 1; min-width: 0; }
   .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+  .chips-scroll { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; -webkit-overflow-scrolling: touch; }
+  .chips-scroll .chip { flex-shrink: 0; white-space: nowrap; }
   .chip {
     border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 700;
     border: 1px solid var(--line); background: var(--surface); color: var(--muted);
@@ -331,11 +333,12 @@ const CONFIG = {
   ANON_KEY: "sb_publishable_arrTh3I_yfqNUZqzm4BkZQ_7s_EKLfv",
 };
 const ENDPOINT = CONFIG.SUPABASE_URL + "/functions/v1/tickets-api";
+const ES_MOBIL = window.innerWidth <= 700;
 const authClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.ANON_KEY);
 
 // Súbela cada vez que reemplaces este archivo, para saber a simple vista
 // qué versión tienes cargada (se muestra chica, junto al título).
-const APP_VERSION = "v2.6 · 9 sep 2026";
+const APP_VERSION = "v3.0 · 9 sep 2026";
 
 const ESTADOS = ["Nuevo", "En gestión", "Mudanza", "Tarjeta", "Gasto Común", "Operaciones", "Administración", "Póliza", "Comité", "Esperando respuesta", "Resuelto"];
 const ESTADO_COLORS = {
@@ -365,7 +368,7 @@ let state = {
   modalTab: "datos",
   archivados: [], archivadosCargados: false, historialArchivados: [],
   seleccionados: new Set(),
-  composerAbierto: window.innerWidth > 900,
+  composerAbierto: window.innerWidth > 900, estadoFiltroMovil: "todos",
   lecturaActiva: null, lecturaIncluyeGastos: false, gastoIA: null,
   mostrarLeyenda: false, plantillas: [], plantillasCargadas: false,
   cargando: false, error: "", procesandoNuevo: false, imagenNueva: null,
@@ -710,6 +713,8 @@ function renderTablero() {
   const chips = [`<button class="chip ${state.filtroBuzon === "todos" ? "active" : ""}" style="--chip-color: var(--ink)" data-buzon="todos">Todos (${state.tickets.length})</button>`]
     .concat(BUZONES.map((b) => `<button class="chip ${state.filtroBuzon === b.id ? "active" : ""}" style="--chip-color: ${b.color}" data-buzon="${b.id}">${b.label} (${state.tickets.filter((t) => t.buzon === b.id).length})</button>`));
 
+  if (ES_MOBIL) return renderTableroMovil(visibles, chips);
+
   const topRow = `
     <div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:center;">
       <div class="search-box">
@@ -743,6 +748,36 @@ function renderTablero() {
   }).join("");
 
   return topRow + `<div class="board">${columns}</div>`;
+}
+
+// ------------------------------------------------------------
+// Vista dedicada para celular: lista vertical de una sola columna,
+// con un filtro de estado en vez de columnas lado a lado.
+// ------------------------------------------------------------
+function renderTableroMovil(visibles, chipsBuzon) {
+  const porEstado = state.estadoFiltroMovil === "todos"
+    ? visibles.filter((t) => t.estado !== "Resuelto" || state.soloAbiertos === false)
+    : visibles.filter((t) => t.estado === state.estadoFiltroMovil);
+
+  const ordenados = [...porEstado].sort((a, b) => {
+    const pr = PRIORIDAD_RANK[a.prioridad] - PRIORIDAD_RANK[b.prioridad];
+    if (pr !== 0) return pr;
+    return new Date(a.last_activity_at) - new Date(b.last_activity_at);
+  });
+
+  const chipsEstado = [`<button class="chip ${state.estadoFiltroMovil === "todos" ? "active" : ""}" style="--chip-color: var(--ink)" data-estado-movil="todos">Todos</button>`]
+    .concat(ESTADOS.map((e) => `<button class="chip ${state.estadoFiltroMovil === e ? "active" : ""}" style="--chip-color: ${ESTADO_COLORS[e]}" data-estado-movil="${e}">${e} (${visibles.filter((t) => t.estado === e).length})</button>`));
+
+  return `
+    <div class="search-box" style="margin-bottom:10px;">
+      ${iconSvg("search", 15)}
+      <input type="text" id="busqueda" placeholder="Buscar por folio, tema, residente…" value="${escapeAttr(state.busqueda)}" />
+    </div>
+    <div class="chips" style="margin-bottom:8px;">${chipsBuzon.join("")}</div>
+    <div class="chips-scroll">${chipsEstado.join("")}</div>
+    <div style="display:flex; flex-direction:column; gap:12px; margin-top:12px;">
+      ${ordenados.length === 0 ? `<div class="empty-col">Sin tickets en este filtro</div>` : ordenados.map(renderCard).join("")}
+    </div>`;
 }
 
 function renderTabla(visibles) {
@@ -849,6 +884,31 @@ function renderArchivados() {
       <button class="btn-ghost" style="color:var(--alta); border-color:var(--alta);" id="btn-eliminar-seleccion">${iconSvg("x", 13)} Eliminar definitivamente</button>
       <button class="btn-ghost" id="btn-cancelar-seleccion" style="margin-left:auto;">Cancelar</button>
     </div>` : "";
+
+  if (ES_MOBIL) {
+    return barra + `
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        ${state.archivados.map((t) => {
+          const buzon = BUZONES.find((b) => b.id === t.buzon) || BUZONES[0];
+          return `
+          <div class="card" style="--buzon-color:${buzon.color}; --estado-color:var(--line);" data-open="${t.id}">
+            <div class="card-top">
+              <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" class="check-fila" data-check="${t.id}" ${state.seleccionados.has(t.id) ? "checked" : ""} onclick="event.stopPropagation()" /><span class="card-id mono">${t.folio}</span></label>
+            </div>
+            <div class="card-title">${escapeHtml(t.tema)}</div>
+            <div class="badges">
+              <span class="badge" style="background: color-mix(in srgb, ${buzon.color} 14%, white); color: ${buzon.color}">${buzon.label}</span>
+              <span class="badge" style="background:#F1F1EE; color: var(--muted);">${escapeHtml(t.categoria)}</span>
+            </div>
+            <div class="card-footer"><span>${escapeHtml(t.solicitante || "")}</span></div>
+            <div style="display:flex; gap:8px; margin-top:10px;">
+              <button class="btn-ghost" data-restaurar="${t.id}" onclick="event.stopPropagation()" style="flex:1;">${iconSvg("rotate-ccw", 13)} Restaurar</button>
+              <button class="btn-ghost" style="color:var(--alta); border-color:var(--alta); flex:1;" data-eliminar-def="${t.id}" onclick="event.stopPropagation()">${iconSvg("x", 13)} Eliminar</button>
+            </div>
+          </div>`;
+        }).join("")}
+      </div>`;
+  }
 
   return barra + `
     <div class="table-scroll">
@@ -1157,6 +1217,7 @@ function escapeAttr(s) { return escapeHtml(s).replace(/"/g, "&quot;"); }
 function attachEvents() {
   document.querySelectorAll("[data-vista]").forEach((b) => b.onclick = () => { state.vista = b.dataset.vista; render(); });
   document.querySelectorAll("[data-buzon]").forEach((b) => b.onclick = () => { state.filtroBuzon = b.dataset.buzon; render(); });
+  document.querySelectorAll("[data-estado-movil]").forEach((b) => b.onclick = () => { state.estadoFiltroMovil = b.dataset.estadoMovil; render(); });
   document.querySelectorAll("[data-open]").forEach((c) => c.onclick = () => { state.detalleId = Number(c.dataset.open); state.modalTab = "datos"; render(); });
   document.querySelectorAll("[data-modo]").forEach((b) => b.onclick = () => { state.modoVista = b.dataset.modo; render(); });
   document.querySelectorAll("[data-sort]").forEach((th) => th.onclick = () => {
