@@ -204,7 +204,8 @@
     max-height: calc(100vh - 48px); display: flex; flex-direction: column; overflow: hidden;
   }
   .modal-scroll { padding: 26px; overflow-y: auto; }
-  .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 26px 0; flex-shrink: 0; }
+  .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 26px 0; flex-shrink: 0; flex-wrap: wrap; gap: 8px; }
+  .modal-header h3 { min-width: 0; overflow-wrap: break-word; }
   .tabs-row-sticky { padding: 0 26px; flex-shrink: 0; }
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   @media (max-width: 560px) { .grid-2 { grid-template-columns: 1fr; } }
@@ -338,7 +339,7 @@ const authClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.ANON_KEY);
 
 // Súbela cada vez que reemplaces este archivo, para saber a simple vista
 // qué versión tienes cargada (se muestra chica, junto al título).
-const APP_VERSION = "v3.0 · 9 sep 2026";
+const APP_VERSION = "v3.1 · 9 sep 2026";
 
 const ESTADOS = ["Nuevo", "En gestión", "Mudanza", "Tarjeta", "Gasto Común", "Operaciones", "Administración", "Póliza", "Comité", "Esperando respuesta", "Resuelto"];
 const ESTADO_COLORS = {
