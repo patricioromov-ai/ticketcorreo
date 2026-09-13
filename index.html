@@ -180,6 +180,11 @@
     cursor: pointer;
   }
   .card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  .card[draggable="true"] { cursor: grab; }
+  .card.dragging { opacity: 0.4; }
+  .column-header { cursor: grab; }
+  .column-body.drop-target { background: color-mix(in srgb, var(--accent) 10%, transparent); outline: 2px dashed var(--accent); outline-offset: -2px; border-radius: 8px; }
+  .board-col.col-drop-target > .column-header { outline: 2px dashed var(--ink); outline-offset: 2px; }
   .card-top { display: flex; justify-content: space-between; align-items: flex-start; }
   .card-id { color: var(--muted); font-size: 11px; }
   .card-title { font-size: 15px; font-weight: 700; margin-top: 5px; }
@@ -335,11 +340,24 @@ const CONFIG = {
 };
 const ENDPOINT = CONFIG.SUPABASE_URL + "/functions/v1/tickets-api";
 const ES_MOBIL = window.innerWidth <= 700;
+
+function cargarOrdenEstados() {
+  try {
+    const guardado = JSON.parse(localStorage.getItem("jdvm_orden_estados") || "null");
+    if (Array.isArray(guardado) && guardado.length === ESTADOS.length && ESTADOS.every((e) => guardado.includes(e))) return guardado;
+  } catch { /* usa el orden por defecto */ }
+  return [...ESTADOS];
+}
+function guardarOrdenEstados(orden) {
+  try { localStorage.setItem("jdvm_orden_estados", JSON.stringify(orden)); } catch { /* no crítico */ }
+}
+let arrastrandoTicketId = null;
+let arrastrandoEstadoCol = null;
 const authClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.ANON_KEY);
 
 // Súbela cada vez que reemplaces este archivo, para saber a simple vista
 // qué versión tienes cargada (se muestra chica, junto al título).
-const APP_VERSION = "v3.1 · 9 sep 2026";
+const APP_VERSION = "v3.2 · 9 sep 2026";
 
 const ESTADOS = ["Nuevo", "En gestión", "Mudanza", "Tarjeta", "Gasto Común", "Operaciones", "Administración", "Póliza", "Comité", "Esperando respuesta", "Resuelto"];
 const ESTADO_COLORS = {
@@ -369,7 +387,7 @@ let state = {
   modalTab: "datos",
   archivados: [], archivadosCargados: false, historialArchivados: [],
   seleccionados: new Set(),
-  composerAbierto: window.innerWidth > 900, estadoFiltroMovil: "todos",
+  composerAbierto: false, estadoFiltroMovil: "todos", ordenEstados: cargarOrdenEstados(),
   lecturaActiva: null, lecturaIncluyeGastos: false, gastoIA: null,
   mostrarLeyenda: false, plantillas: [], plantillasCargadas: false,
   cargando: false, error: "", procesandoNuevo: false, imagenNueva: null,
@@ -660,34 +678,14 @@ function render() {
     </div>` : ""}
 
     <div class="layout">
-      <aside class="composer relative">
-        ${state.procesandoNuevo ? `<div class="loading-overlay"><div class="loading-chip">${iconSvg("loader-2", 14, "spin")} Leyendo correo…</div></div>` : ""}
-        <button id="toggle-composer" style="display:flex; align-items:center; justify-content:space-between; width:100%; background:none; border:none; padding:0; cursor:pointer;">
-          <h2 style="margin:0;">${iconSvg("message-square-plus", 17)} Nuevo ticket</h2>
-          ${iconSvg(state.composerAbierto ? "chevron-up" : "chevron-down", 18)}
-        </button>
-        ${state.composerAbierto ? `
-        <p class="hint">Pega el correo y/o adjunta el comprobante si viene como imagen.</p>
-        <textarea id="texto-nuevo" rows="8" placeholder="De: ...&#10;Para: gastoscomunes@jdvm.cl&#10;Asunto: ...&#10;&#10;Pega aquí el cuerpo del correo"></textarea>
-        <label class="file-drop">
-          ${iconSvg("image", 15)} <span id="nombre-imagen-nueva">${state.imagenNueva ? state.imagenNueva.name : "Adjuntar comprobante (imagen)"}</span>
-          <input type="file" id="imagen-nueva" accept="image/*" />
-        </label>
-        <label class="field-label">Buzón de origen</label>
-        <select id="buzon-nuevo">
-          <option value="auto">Detectar automáticamente</option>
-          ${BUZONES.map((b) => `<option value="${b.id}">${b.label}</option>`).join("")}
-        </select>
-        <button class="btn-primary" id="btn-crear" ${state.procesandoNuevo ? "disabled" : ""}>
-          ${iconSvg("sparkles", 16)} Procesar con IA
-        </button>
-        ${state.error ? `<p class="error-text">${state.error}</p>` : ""}` : ""}
-      </aside>
-
-      <main class="board-area">
+      <main class="board-area" style="width:100%;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+          <button class="btn-primary" id="abrir-composer" style="width:auto; margin-top:0;">${iconSvg("message-square-plus", 16)} Nuevo ticket</button>
+        </div>
         ${state.vista === "inicio" ? renderInicio() : state.vista === "tablero" ? renderTablero() : state.vista === "estadisticas" ? renderEstadisticas() : renderArchivados()}
       </main>
     </div>
+    ${state.composerAbierto ? renderComposerModal() : ""}
 
     ${state.detalleId ? renderModal() : ""}
     ${state.mostrarLeyenda ? renderLeyenda() : ""}
@@ -731,18 +729,18 @@ function renderTablero() {
 
   if (state.modoVista === "tabla") return topRow + renderTabla(visibles);
 
-  const columns = ESTADOS.map((estado) => {
+  const columns = state.ordenEstados.map((estado) => {
     const items = visibles.filter((t) => t.estado === estado).sort((a, b) => {
       const pr = PRIORIDAD_RANK[a.prioridad] - PRIORIDAD_RANK[b.prioridad];
       if (pr !== 0) return pr;
       return new Date(a.last_activity_at) - new Date(b.last_activity_at);
     });
     return `
-      <div class="board-col">
-        <div class="column-header" style="--col-color: ${ESTADO_COLORS[estado]}">
+      <div class="board-col" draggable="true" data-col-estado="${estado}">
+        <div class="column-header" style="--col-color: ${ESTADO_COLORS[estado]}" title="Arrastra para reordenar esta columna">
           <span class="dot"></span><h3>${estado}</h3><span class="column-count">${items.length}</span>
         </div>
-        <div class="column-body">
+        <div class="column-body" data-drop-estado="${estado}">
           ${items.length === 0 ? `<div class="empty-col">Sin tickets</div>` : items.map(renderCard).join("")}
         </div>
       </div>`;
@@ -844,7 +842,7 @@ function renderCard(t) {
   const dias = daysSince(t.last_activity_at);
   const urgente = t.estado !== "Resuelto" && dias >= 3;
   return `
-    <div class="card" style="--buzon-color: ${buzon.color}; --estado-color: ${ESTADO_COLORS[t.estado]}" data-open="${t.id}">
+    <div class="card" style="--buzon-color: ${buzon.color}; --estado-color: ${ESTADO_COLORS[t.estado]}" data-open="${t.id}" draggable="true" data-drag-ticket="${t.id}">
       <div class="card-top">
         <span class="card-id mono">${t.folio} · ${fmtDate(t.created_at)}</span>
         <button class="icon-btn" data-archive="${t.id}" aria-label="Archivar ticket" onclick="event.stopPropagation()">${iconSvg("archive", 15)}</button>
@@ -951,6 +949,36 @@ function calcularSemaforo(tickets) {
 }
 
 const TOPE_MENSUAL_REFERENCIA = 10; // ajusta este número para que coincida con el tope que definiste en Anthropic
+
+function renderComposerModal() {
+  return `
+    <div class="overlay" id="overlay-composer">
+      <div class="modal relative" style="max-width:480px;">
+        ${state.procesandoNuevo ? `<div class="loading-overlay"><div class="loading-chip">${iconSvg("loader-2", 14, "spin")} Leyendo correo…</div></div>` : ""}
+        <div class="modal-header">
+          <h3 style="font-size:16px;">${iconSvg("message-square-plus", 17)} Nuevo ticket</h3>
+          <button class="icon-btn" id="cerrar-composer" aria-label="Cerrar">${iconSvg("x", 20)}</button>
+        </div>
+        <div class="modal-scroll">
+          <p class="hint" style="margin-top:0;">Pega el correo y/o adjunta el comprobante si viene como imagen.</p>
+          <textarea id="texto-nuevo" rows="8" placeholder="De: ...&#10;Para: gastoscomunes@jdvm.cl&#10;Asunto: ...&#10;&#10;Pega aquí el cuerpo del correo"></textarea>
+          <label class="file-drop">
+            ${iconSvg("image", 15)} <span id="nombre-imagen-nueva">${state.imagenNueva ? state.imagenNueva.name : "Adjuntar comprobante (imagen)"}</span>
+            <input type="file" id="imagen-nueva" accept="image/*" />
+          </label>
+          <label class="field-label">Buzón de origen</label>
+          <select id="buzon-nuevo">
+            <option value="auto">Detectar automáticamente</option>
+            ${BUZONES.map((b) => `<option value="${b.id}">${b.label}</option>`).join("")}
+          </select>
+          <button class="btn-primary" id="btn-crear" ${state.procesandoNuevo ? "disabled" : ""}>
+            ${iconSvg("sparkles", 16)} Procesar con IA
+          </button>
+          ${state.error ? `<p class="error-text">${state.error}</p>` : ""}
+        </div>
+      </div>
+    </div>`;
+}
 
 function renderLeyenda() {
   return `
@@ -1363,8 +1391,74 @@ function attachEvents() {
     } catch (e) { showToast("No se pudo actualizar el estado", "error"); }
   });
 
-  const toggleComposer = document.getElementById("toggle-composer");
-  if (toggleComposer) toggleComposer.onclick = () => { state.composerAbierto = !state.composerAbierto; render(); };
+  // Arrastrar tickets entre columnas (cambia el estado)
+  document.querySelectorAll("[data-drag-ticket]").forEach((card) => {
+    card.addEventListener("dragstart", (e) => {
+      arrastrandoTicketId = Number(card.dataset.dragTicket);
+      card.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      e.stopPropagation();
+    });
+    card.addEventListener("dragend", () => { card.classList.remove("dragging"); arrastrandoTicketId = null; });
+  });
+  document.querySelectorAll("[data-drop-estado]").forEach((zona) => {
+    zona.addEventListener("dragover", (e) => { if (arrastrandoTicketId != null) { e.preventDefault(); zona.classList.add("drop-target"); } });
+    zona.addEventListener("dragleave", () => zona.classList.remove("drop-target"));
+    zona.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      zona.classList.remove("drop-target");
+      if (arrastrandoTicketId == null) return;
+      const idMovido = arrastrandoTicketId;
+      const nuevoEstado = zona.dataset.dropEstado;
+      const ticketActual = state.tickets.find((t) => t.id === idMovido);
+      arrastrandoTicketId = null;
+      if (!ticketActual || ticketActual.estado === nuevoEstado) return;
+      if (nuevoEstado === "Resuelto" && ticketActual.estado !== "Resuelto") {
+        if (!confirm("¿Confirmas que este ticket quedó resuelto?")) return;
+      }
+      try {
+        await api("actualizar_ticket", { id: idMovido, patch: { estado: nuevoEstado } });
+        showToast(`Movido a "${nuevoEstado}"`);
+        cargarTodo();
+      } catch (err) { showToast("No se pudo mover el ticket", "error"); }
+    });
+  });
+
+  // Arrastrar columnas completas para reordenarlas (se guarda en este navegador)
+  document.querySelectorAll("[data-col-estado]").forEach((col) => {
+    col.addEventListener("dragstart", (e) => {
+      if (e.target.closest("[data-drag-ticket]")) return;
+      arrastrandoEstadoCol = col.dataset.colEstado;
+      e.dataTransfer.effectAllowed = "move";
+    });
+    col.addEventListener("dragover", (e) => {
+      if (arrastrandoEstadoCol && arrastrandoEstadoCol !== col.dataset.colEstado) { e.preventDefault(); col.classList.add("col-drop-target"); }
+    });
+    col.addEventListener("dragleave", () => col.classList.remove("col-drop-target"));
+    col.addEventListener("drop", (e) => {
+      col.classList.remove("col-drop-target");
+      if (!arrastrandoEstadoCol || arrastrandoEstadoCol === col.dataset.colEstado) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const orden = [...state.ordenEstados];
+      const origenIdx = orden.indexOf(arrastrandoEstadoCol);
+      const destinoIdx = orden.indexOf(col.dataset.colEstado);
+      orden.splice(origenIdx, 1);
+      orden.splice(destinoIdx, 0, arrastrandoEstadoCol);
+      state.ordenEstados = orden;
+      guardarOrdenEstados(orden);
+      arrastrandoEstadoCol = null;
+      render();
+    });
+  });
+
+  const abrirComposer = document.getElementById("abrir-composer");
+  if (abrirComposer) abrirComposer.onclick = () => { state.composerAbierto = true; render(); };
+  const cerrarComposer = document.getElementById("cerrar-composer");
+  if (cerrarComposer) cerrarComposer.onclick = () => { state.composerAbierto = false; render(); };
+  const overlayComposer = document.getElementById("overlay-composer");
+  if (overlayComposer) overlayComposer.onclick = (e) => { if (e.target.id === "overlay-composer") { state.composerAbierto = false; render(); } };
 
   const imgNueva = document.getElementById("imagen-nueva");
   if (imgNueva) imgNueva.onchange = () => {
@@ -1469,7 +1563,7 @@ async function crearTicket() {
     await api("crear_ticket", payload);
     state.imagenNueva = null;
     showToast("Ticket creado ✓");
-    if (window.innerWidth <= 900) state.composerAbierto = false;
+    state.composerAbierto = false;
     await cargarTodo();
   } catch (e) {
     state.error = "No se pudo procesar. Intenta de nuevo.";
