@@ -357,15 +357,18 @@ const authClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.ANON_KEY);
 
 // Súbela cada vez que reemplaces este archivo, para saber a simple vista
 // qué versión tienes cargada (se muestra chica, junto al título).
-const APP_VERSION = "v3.2 · 9 sep 2026";
+const APP_VERSION = "v4.0 · 9 sep 2026";
 
-const ESTADOS = ["Nuevo", "En gestión", "Mudanza", "Tarjeta", "Gasto Común", "Operaciones", "Administración", "Póliza", "Comité", "Esperando respuesta", "Resuelto"];
+const ESTADOS = ["Nuevo", "En gestión", "Esperando respuesta", "Resuelto"];
 const ESTADO_COLORS = {
   "Nuevo": "var(--nuevo)", "En gestión": "var(--gestion)",
+  "Esperando respuesta": "var(--espera)", "Resuelto": "var(--resuelto)",
+};
+const DERIVACIONES = ["Mudanza", "Tarjeta", "Gasto Común", "Operaciones", "Administración", "Póliza", "Comité"];
+const DERIVACION_COLORS = {
   "Mudanza": "var(--mudanza)", "Tarjeta": "var(--tarjeta)",
   "Gasto Común": "var(--gc)", "Operaciones": "var(--ops)", "Administración": "var(--admin)",
   "Póliza": "var(--poliza)", "Comité": "var(--comite)",
-  "Esperando respuesta": "var(--espera)", "Resuelto": "var(--resuelto)",
 };
 const PRIORIDAD_RANK = { alta: 0, media: 1, baja: 2 };
 const PRIORIDAD_COLORS = { alta: "var(--alta)", media: "var(--media)", baja: "var(--baja)" };
@@ -387,7 +390,7 @@ let state = {
   modalTab: "datos",
   archivados: [], archivadosCargados: false, historialArchivados: [],
   seleccionados: new Set(),
-  composerAbierto: false, estadoFiltroMovil: "todos", ordenEstados: cargarOrdenEstados(),
+  composerAbierto: false, estadoFiltroMovil: "todos", ordenEstados: cargarOrdenEstados(), filtroDerivacion: "todos",
   lecturaActiva: null, lecturaIncluyeGastos: false, gastoIA: null,
   mostrarLeyenda: false, plantillas: [], plantillasCargadas: false,
   cargando: false, error: "", procesandoNuevo: false, imagenNueva: null,
@@ -705,6 +708,7 @@ function renderTablero() {
   const q = state.busqueda.trim().toLowerCase();
   const visibles = state.tickets.filter((t) => {
     if (state.filtroBuzon !== "todos" && t.buzon !== state.filtroBuzon) return false;
+    if (state.filtroDerivacion !== "todos" && (state.filtroDerivacion === "ninguna" ? t.derivacion : t.derivacion !== state.filtroDerivacion)) return false;
     if (state.soloUrgentes && !(t.estado !== "Resuelto" && daysSince(t.last_activity_at) >= 3)) return false;
     if (!q) return true;
     return [t.folio, t.tema, t.resumen, t.solicitante].some((v) => (v || "").toLowerCase().includes(q));
@@ -712,7 +716,10 @@ function renderTablero() {
   const chips = [`<button class="chip ${state.filtroBuzon === "todos" ? "active" : ""}" style="--chip-color: var(--ink)" data-buzon="todos">Todos (${state.tickets.length})</button>`]
     .concat(BUZONES.map((b) => `<button class="chip ${state.filtroBuzon === b.id ? "active" : ""}" style="--chip-color: ${b.color}" data-buzon="${b.id}">${b.label} (${state.tickets.filter((t) => t.buzon === b.id).length})</button>`));
 
-  if (ES_MOBIL) return renderTableroMovil(visibles, chips);
+  const chipsDerivacion = [`<button class="chip ${state.filtroDerivacion === "todos" ? "active" : ""}" style="--chip-color: var(--ink)" data-derivacion-filtro="todos">Todas las derivaciones</button>`]
+    .concat(DERIVACIONES.map((d) => `<button class="chip ${state.filtroDerivacion === d ? "active" : ""}" style="--chip-color: ${DERIVACION_COLORS[d]}" data-derivacion-filtro="${d}">→ ${d} (${state.tickets.filter((t) => t.derivacion === d).length})</button>`));
+
+  if (ES_MOBIL) return renderTableroMovil(visibles, chips, chipsDerivacion);
 
   const topRow = `
     <div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:center;">
@@ -725,7 +732,8 @@ function renderTablero() {
         <button data-modo="tabla" class="${state.modoVista === "tabla" ? "active" : ""}">${iconSvg("table", 13)} Tabla</button>
       </div>
     </div>
-    <div class="chips">${chips.join("")}</div>`;
+    <div class="chips">${chips.join("")}</div>
+    <div class="chips-scroll" style="margin-bottom:14px;">${chipsDerivacion.join("")}</div>`;
 
   if (state.modoVista === "tabla") return topRow + renderTabla(visibles);
 
@@ -753,7 +761,7 @@ function renderTablero() {
 // Vista dedicada para celular: lista vertical de una sola columna,
 // con un filtro de estado en vez de columnas lado a lado.
 // ------------------------------------------------------------
-function renderTableroMovil(visibles, chipsBuzon) {
+function renderTableroMovil(visibles, chipsBuzon, chipsDerivacion) {
   const porEstado = state.estadoFiltroMovil === "todos"
     ? visibles.filter((t) => t.estado !== "Resuelto" || state.soloAbiertos === false)
     : visibles.filter((t) => t.estado === state.estadoFiltroMovil);
@@ -773,7 +781,8 @@ function renderTableroMovil(visibles, chipsBuzon) {
       <input type="text" id="busqueda" placeholder="Buscar por folio, tema, residente…" value="${escapeAttr(state.busqueda)}" />
     </div>
     <div class="chips" style="margin-bottom:8px;">${chipsBuzon.join("")}</div>
-    <div class="chips-scroll">${chipsEstado.join("")}</div>
+    <div class="chips-scroll" style="margin-bottom:8px;">${chipsEstado.join("")}</div>
+    <div class="chips-scroll">${chipsDerivacion.join("")}</div>
     <div style="display:flex; flex-direction:column; gap:12px; margin-top:12px;">
       ${ordenados.length === 0 ? `<div class="empty-col">Sin tickets en este filtro</div>` : ordenados.map(renderCard).join("")}
     </div>`;
@@ -782,7 +791,7 @@ function renderTableroMovil(visibles, chipsBuzon) {
 function renderTabla(visibles) {
   const campos = {
     folio: (t) => t.folio, tema: (t) => t.tema, buzon: (t) => t.buzon, prioridad: (t) => PRIORIDAD_RANK[t.prioridad],
-    estado: (t) => t.estado, solicitante: (t) => t.solicitante || "", dias: (t) => daysSince(t.last_activity_at),
+    estado: (t) => t.estado, derivacion: (t) => t.derivacion || "", solicitante: (t) => t.solicitante || "", dias: (t) => daysSince(t.last_activity_at),
     fecha: (t) => t.created_at,
   };
   const dir = state.sortDir === "asc" ? 1 : -1;
@@ -802,6 +811,11 @@ function renderTabla(visibles) {
         ${ESTADOS.map((e) => `<option value="${e}">${e}</option>`).join("")}
       </select>
       <button class="btn-ghost" id="btn-cambiar-estado-seleccion">${iconSvg("move", 13)} Mover a este estado</button>
+      <select id="bulk-derivacion-select" style="max-width:190px;">
+        <option value="">Sin derivar</option>
+        ${DERIVACIONES.map((d) => `<option value="${d}">→ ${d}</option>`).join("")}
+      </select>
+      <button class="btn-ghost" id="btn-cambiar-derivacion-seleccion">${iconSvg("move", 13)} Asignar derivación</button>
       <button class="btn-ghost" id="btn-archivar-seleccion">${iconSvg("archive", 13)} Archivar seleccionados</button>
       <button class="btn-ghost" id="btn-cancelar-seleccion" style="margin-left:auto;">Cancelar</button>
     </div>` : "";
@@ -811,10 +825,10 @@ function renderTabla(visibles) {
     <table class="ticket-table">
       <thead><tr>
         <th class="row-check"><input type="checkbox" id="check-todos" ${todosMarcados ? "checked" : ""} /></th>
-        ${th("folio", "Folio")}${th("fecha", "Llegada")}${th("tema", "Tema")}${th("buzon", "Buzón")}${th("prioridad", "Prioridad")}${th("estado", "Estado")}${th("solicitante", "Solicitante")}${th("dias", "Días s/gestión")}<th></th>
+        ${th("folio", "Folio")}${th("fecha", "Llegada")}${th("tema", "Tema")}${th("buzon", "Buzón")}${th("prioridad", "Prioridad")}${th("estado", "Estado")}${th("derivacion", "Derivación")}${th("solicitante", "Solicitante")}${th("dias", "Días s/gestión")}<th></th>
       </tr></thead>
       <tbody>
-        ${filas.length === 0 ? `<tr><td colspan="10" class="muted" style="text-align:center; padding:24px;">Sin tickets</td></tr>` : filas.map((t) => {
+        ${filas.length === 0 ? `<tr><td colspan="11" class="muted" style="text-align:center; padding:24px;">Sin tickets</td></tr>` : filas.map((t) => {
           const buzon = BUZONES.find((b) => b.id === t.buzon) || BUZONES[0];
           const dias = daysSince(t.last_activity_at);
           const urgente = t.estado !== "Resuelto" && dias >= 3;
@@ -827,6 +841,7 @@ function renderTabla(visibles) {
             <td><span class="badge" style="background: color-mix(in srgb, ${buzon.color} 14%, white); color: ${buzon.color}">${buzon.label}</span></td>
             <td><span class="badge" style="background: color-mix(in srgb, ${PRIORIDAD_COLORS[t.prioridad]} 14%, white); color: ${PRIORIDAD_COLORS[t.prioridad]}; text-transform:capitalize;">${t.prioridad}</span></td>
             <td><span class="badge" style="background: color-mix(in srgb, ${ESTADO_COLORS[t.estado]} 14%, white); color: ${ESTADO_COLORS[t.estado]}">${t.estado}</span></td>
+            <td>${t.derivacion ? `<span class="badge" style="background: color-mix(in srgb, ${DERIVACION_COLORS[t.derivacion]} 14%, white); color: ${DERIVACION_COLORS[t.derivacion]}">→ ${t.derivacion}</span>` : `<span class="muted" style="font-size:12px;">—</span>`}</td>
             <td>${escapeHtml(t.solicitante || "")}</td>
             <td class="${urgente ? "urgent" : ""}">${dias === 0 ? "hoy" : dias + " d"}</td>
             <td><button class="icon-btn" data-archive="${t.id}" aria-label="Archivar ticket" onclick="event.stopPropagation()">${iconSvg("archive", 15)}</button></td>
@@ -853,6 +868,7 @@ function renderCard(t) {
         <span class="badge" style="background: color-mix(in srgb, ${buzon.color} 14%, white); color: ${buzon.color}">${iconSvg(buzon.icon, 11)} ${buzon.label}</span>
         <span class="badge" style="background: color-mix(in srgb, ${PRIORIDAD_COLORS[t.prioridad]} 14%, white); color: ${PRIORIDAD_COLORS[t.prioridad]}; text-transform: capitalize;">${t.prioridad}</span>
         <span class="badge" style="background:#F1F1EE; color: var(--muted);">${escapeHtml(t.categoria)}</span>
+        ${t.derivacion ? `<span class="badge" style="background: color-mix(in srgb, ${DERIVACION_COLORS[t.derivacion]} 16%, white); color: ${DERIVACION_COLORS[t.derivacion]}; font-weight:800;">${iconSvg("move", 10)} ${t.derivacion}</span>` : ""}
         ${t.needs_review ? `<span class="badge" style="background:#FBEAEA; color: var(--alta);">Revisar</span>` : ""}
       </div>
       <div class="card-footer">
@@ -861,6 +877,10 @@ function renderCard(t) {
       </div>
       <select class="estado-select" style="--estado-color: ${ESTADO_COLORS[t.estado]}" data-estado-de="${t.id}" onclick="event.stopPropagation()">
         ${ESTADOS.map((e) => `<option value="${e}" ${e === t.estado ? "selected" : ""}>${e}</option>`).join("")}
+      </select>
+      <select class="estado-select" style="--estado-color: ${t.derivacion ? DERIVACION_COLORS[t.derivacion] : "var(--muted)"}; margin-top:6px;" data-derivacion-de="${t.id}" onclick="event.stopPropagation()">
+        <option value="" ${!t.derivacion ? "selected" : ""}>Sin derivar</option>
+        ${DERIVACIONES.map((d) => `<option value="${d}" ${d === t.derivacion ? "selected" : ""}>→ ${d}</option>`).join("")}
       </select>
     </div>`;
 }
@@ -989,8 +1009,11 @@ function renderLeyenda() {
           <button class="icon-btn" id="cerrar-leyenda" aria-label="Cerrar">${iconSvg("x", 20)}</button>
         </div>
         <div class="modal-scroll">
-          <h4 style="font-size:12.5px; color:var(--muted); text-transform:uppercase; margin-bottom:8px;">Estado del ticket</h4>
+          <h4 style="font-size:12.5px; color:var(--muted); text-transform:uppercase; margin-bottom:8px;">Estado (progreso del ticket)</h4>
           ${ESTADOS.map((e) => `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13.5px;"><span style="width:12px; height:12px; border-radius:999px; background:${ESTADO_COLORS[e]};"></span>${e}</div>`).join("")}
+
+          <h4 style="font-size:12.5px; color:var(--muted); text-transform:uppercase; margin:16px 0 8px;">Derivación (a quién se deriva)</h4>
+          ${DERIVACIONES.map((d) => `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13.5px;"><span style="width:12px; height:12px; border-radius:999px; background:${DERIVACION_COLORS[d]};"></span>${d}</div>`).join("")}
 
           <h4 style="font-size:12.5px; color:var(--muted); text-transform:uppercase; margin:16px 0 8px;">Buzón</h4>
           ${BUZONES.map((b) => `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13.5px;"><span style="width:12px; height:12px; border-radius:999px; background:${b.color};"></span>${b.label}</div>`).join("")}
@@ -1136,6 +1159,13 @@ function renderModal() {
               ${ESTADOS.map((e) => `<option value="${e}" ${e === t.estado ? "selected" : ""}>${e}</option>`).join("")}
             </select>
           </div>
+          <div>
+            <label class="field-label">Derivación</label>
+            <select id="edit-derivacion" style="border-color: ${t.derivacion ? DERIVACION_COLORS[t.derivacion] : "var(--line)"}; color: ${t.derivacion ? DERIVACION_COLORS[t.derivacion] : "var(--ink)"}; font-weight:700;">
+              <option value="" ${!t.derivacion ? "selected" : ""}>Sin derivar</option>
+              ${DERIVACIONES.map((d) => `<option value="${d}" ${d === t.derivacion ? "selected" : ""}>→ ${d}</option>`).join("")}
+            </select>
+          </div>
         </div>
         <div style="display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;">
           <button class="btn-ghost" id="btn-guardar-datos">Guardar datos</button>
@@ -1247,6 +1277,7 @@ function attachEvents() {
   document.querySelectorAll("[data-vista]").forEach((b) => b.onclick = () => { state.vista = b.dataset.vista; render(); });
   document.querySelectorAll("[data-buzon]").forEach((b) => b.onclick = () => { state.filtroBuzon = b.dataset.buzon; render(); });
   document.querySelectorAll("[data-estado-movil]").forEach((b) => b.onclick = () => { state.estadoFiltroMovil = b.dataset.estadoMovil; render(); });
+  document.querySelectorAll("[data-derivacion-filtro]").forEach((b) => b.onclick = () => { state.filtroDerivacion = b.dataset.derivacionFiltro; render(); });
   document.querySelectorAll("[data-open]").forEach((c) => c.onclick = () => { state.detalleId = Number(c.dataset.open); state.modalTab = "datos"; render(); });
   document.querySelectorAll("[data-modo]").forEach((b) => b.onclick = () => { state.modoVista = b.dataset.modo; render(); });
   document.querySelectorAll("[data-sort]").forEach((th) => th.onclick = () => {
@@ -1356,6 +1387,18 @@ function attachEvents() {
     cargarTodo();
   };
 
+  const btnCambiarDerivacionSeleccion = document.getElementById("btn-cambiar-derivacion-seleccion");
+  if (btnCambiarDerivacionSeleccion) btnCambiarDerivacionSeleccion.onclick = async () => {
+    const ids = [...state.seleccionados];
+    const nuevaDerivacion = document.getElementById("bulk-derivacion-select").value || null;
+    const etiqueta = nuevaDerivacion || "Sin derivar";
+    if (!confirm(`¿Asignar "${etiqueta}" a ${ids.length} tickets?`)) return;
+    for (const id of ids) { try { await api("actualizar_ticket", { id, patch: { derivacion: nuevaDerivacion } }); } catch (e) { /* sigue con el resto */ } }
+    showToast(`${ids.length} tickets con derivación "${etiqueta}"`);
+    state.seleccionados.clear();
+    cargarTodo();
+  };
+
   const btnRestaurarSeleccion = document.getElementById("btn-restaurar-seleccion");
   if (btnRestaurarSeleccion) btnRestaurarSeleccion.onclick = async () => {
     const ids = [...state.seleccionados];
@@ -1389,6 +1432,21 @@ function attachEvents() {
       showToast("Estado actualizado a \"" + s.value + "\"");
       cargarTodo();
     } catch (e) { showToast("No se pudo actualizar el estado", "error"); }
+  });
+
+  document.querySelectorAll("[data-derivacion-de]").forEach((s) => s.onchange = async () => {
+    const id = Number(s.dataset.derivacionDe);
+    const ticketActual = state.tickets.find((t) => t.id === id);
+    const nuevaDerivacion = s.value || null;
+    try {
+      await api("actualizar_ticket", { id, patch: { derivacion: nuevaDerivacion } });
+      const texto = nuevaDerivacion
+        ? `Derivación asignada: "${nuevaDerivacion}"${ticketActual && ticketActual.derivacion ? ` (antes: "${ticketActual.derivacion}")` : ""}.`
+        : `Derivación removida${ticketActual && ticketActual.derivacion ? ` (era "${ticketActual.derivacion}")` : ""}.`;
+      await api("agregar_historial", { id, tipo: "estado", texto });
+      showToast(nuevaDerivacion ? `Derivado a "${nuevaDerivacion}"` : "Derivación quitada");
+      cargarTodo();
+    } catch (e) { showToast("No se pudo actualizar la derivación", "error"); }
   });
 
   // Arrastrar tickets entre columnas (cambia el estado)
@@ -1577,6 +1635,7 @@ async function guardarDatosTicket() {
   const id = state.detalleId;
   const nuevoEstado = document.getElementById("edit-estado").value;
   const nuevoBuzon = document.getElementById("edit-buzon").value;
+  const nuevaDerivacion = document.getElementById("edit-derivacion").value || null;
   const ticketActual = state.tickets.find((t) => t.id === id) || state.archivados.find((t) => t.id === id);
   if (nuevoEstado === "Resuelto" && ticketActual && ticketActual.estado !== "Resuelto") {
     if (!confirm("¿Confirmas que este ticket quedó resuelto?")) return;
@@ -1589,11 +1648,18 @@ async function guardarDatosTicket() {
     categoria: document.getElementById("edit-categoria").value,
     solicitante: document.getElementById("edit-solicitante").value,
     estado: nuevoEstado,
+    derivacion: nuevaDerivacion,
     needs_review: false,
   };
   if (ticketActual && ticketActual.buzon !== nuevoBuzon) {
     const nombreBuzon = (id) => (BUZONES.find((b) => b.id === id) || {}).label || id;
     await api("agregar_historial", { id, tipo: "estado", texto: `Ticket derivado de "${nombreBuzon(ticketActual.buzon)}" a "${nombreBuzon(nuevoBuzon)}".` });
+  }
+  if (ticketActual && ticketActual.derivacion !== nuevaDerivacion) {
+    const texto = nuevaDerivacion
+      ? `Derivación asignada: "${nuevaDerivacion}"${ticketActual.derivacion ? ` (antes: "${ticketActual.derivacion}")` : ""}.`
+      : `Derivación removida (era "${ticketActual.derivacion}").`;
+    await api("agregar_historial", { id, tipo: "estado", texto });
   }
   await api("actualizar_ticket", { id, patch });
   showToast("Datos guardados ✓");
