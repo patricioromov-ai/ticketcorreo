@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root {
@@ -357,7 +357,7 @@ const authClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.ANON_KEY);
 
 // Súbela cada vez que reemplaces este archivo, para saber a simple vista
 // qué versión tienes cargada (se muestra chica, junto al título).
-const APP_VERSION = "v4.1 · 9 sep 2026";
+const APP_VERSION = "v4.2 · 9 sep 2026";
 
 const ESTADOS = ["Nuevo", "En gestión", "Esperando respuesta", "Resuelto"];
 const ESTADO_COLORS = {
