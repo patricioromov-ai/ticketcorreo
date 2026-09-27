@@ -357,7 +357,7 @@ const authClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.ANON_KEY);
 
 // Súbela cada vez que reemplaces este archivo, para saber a simple vista
 // qué versión tienes cargada (se muestra chica, junto al título).
-const APP_VERSION = "v4.0 · 9 sep 2026";
+const APP_VERSION = "v4.1 · 9 sep 2026";
 
 const ESTADOS = ["Nuevo", "En gestión", "Esperando respuesta", "Resuelto"];
 const ESTADO_COLORS = {
@@ -394,7 +394,7 @@ let state = {
   lecturaActiva: null, lecturaIncluyeGastos: false, gastoIA: null,
   mostrarLeyenda: false, plantillas: [], plantillasCargadas: false,
   cargando: false, error: "", procesandoNuevo: false, imagenNueva: null,
-  detalleId: null, chartInstance: null,
+  detalleId: null, chartInstance: null, chartDerivacionInstance: null,
 };
 
 // ------------------------------------------------------------
@@ -1080,9 +1080,31 @@ function renderInicio() {
 }
 
 function renderEstadisticas() {
+  const abiertos = state.tickets.filter((t) => t.estado !== "Resuelto");
   const resueltos = state.tickets.filter((t) => t.estado === "Resuelto");
   const promedio = resueltos.length ? Math.round(resueltos.reduce((acc, t) => acc + (new Date(t.last_activity_at) - new Date(t.created_at)) / 86400000, 0) / resueltos.length) : "—";
-  const altaAbiertos = state.tickets.filter((t) => t.estado !== "Resuelto" && t.prioridad === "alta").length;
+  const altaAbiertos = abiertos.filter((t) => t.prioridad === "alta").length;
+
+  // Categorías más atrasadas (promedio de días sin gestión entre los tickets abiertos de cada una)
+  const porCategoriaAbiertos = {};
+  abiertos.forEach((t) => { (porCategoriaAbiertos[t.categoria] = porCategoriaAbiertos[t.categoria] || []).push(t); });
+  const atrasoPorCategoria = Object.entries(porCategoriaAbiertos)
+    .map(([cat, arr]) => ({ cat, count: arr.length, promedioDias: Math.round(arr.reduce((acc, t) => acc + daysSince(t.last_activity_at), 0) / arr.length) }))
+    .sort((a, b) => b.promedioDias - a.promedioDias)
+    .slice(0, 5);
+
+  // Residentes recurrentes (3+ tickets), pueden señalar un problema de fondo no resuelto
+  const porSolicitante = {};
+  state.tickets.forEach((t) => {
+    const nombre = (t.solicitante || "").trim();
+    if (!nombre || nombre.toLowerCase() === "no identificado") return;
+    (porSolicitante[nombre] = porSolicitante[nombre] || []).push(t);
+  });
+  const recurrentes = Object.entries(porSolicitante)
+    .filter(([, arr]) => arr.length >= 3)
+    .map(([nombre, arr]) => ({ nombre, count: arr.length, abiertos: arr.filter((t) => t.estado !== "Resuelto").length }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
 
   return `
     <div class="stat-grid">
@@ -1091,10 +1113,42 @@ function renderEstadisticas() {
       <div class="stat-card"><div class="stat-value" style="color:var(--resuelto)">${resueltos.length}</div><div class="stat-label">Resueltos</div></div>
       <div class="stat-card"><div class="stat-value">${promedio}</div><div class="stat-label">Días prom. resolución</div></div>
     </div>
+
     <div class="panel">
       <h3 style="font-size:15px; margin-bottom:14px;">Tipos de solicitud más frecuentes</h3>
-      <canvas id="grafico-categorias" height="120"></canvas>
+      <div style="position:relative; height:280px;"><canvas id="grafico-categorias"></canvas></div>
     </div>
+
+    <div class="panel">
+      <h3 style="font-size:15px; margin-bottom:4px;">Derivación más frecuente</h3>
+      <p class="muted" style="font-size:12.5px; margin-bottom:14px;">Solo tickets con una derivación asignada</p>
+      <div style="position:relative; height:220px;"><canvas id="grafico-derivacion"></canvas></div>
+    </div>
+
+    ${atrasoPorCategoria.length > 0 ? `
+    <div class="panel">
+      <h3 style="font-size:15px; margin-bottom:4px;">${iconSvg("alert-triangle", 15)} Dónde se está estancando más</h3>
+      <p class="muted" style="font-size:12.5px; margin-bottom:12px;">Categorías con más días promedio sin gestión (entre tickets abiertos)</p>
+      ${atrasoPorCategoria.map((c) => `
+        <div class="ranking-cat" style="--sem-color: ${c.promedioDias >= 3 ? "var(--sem-rojo)" : "var(--sem-amarillo)"}">
+          <span class="ranking-luz"></span>
+          <span class="ranking-nombre">${escapeHtml(c.cat)}</span>
+          <span class="ranking-count">${c.count} abierto${c.count !== 1 ? "s" : ""} · ${c.promedioDias} d promedio</span>
+        </div>`).join("")}
+    </div>` : ""}
+
+    ${recurrentes.length > 0 ? `
+    <div class="panel">
+      <h3 style="font-size:15px; margin-bottom:4px;">${iconSvg("repeat", 15)} Residentes con casos recurrentes</h3>
+      <p class="muted" style="font-size:12.5px; margin-bottom:12px;">3 o más tickets — puede indicar un problema de fondo sin resolver</p>
+      ${recurrentes.map((r) => `
+        <div class="ranking-cat" style="--sem-color: ${r.abiertos > 0 ? "var(--sem-amarillo)" : "var(--sem-verde)"}">
+          <span class="ranking-luz"></span>
+          <span class="ranking-nombre">${escapeHtml(r.nombre)}</span>
+          <span class="ranking-count">${r.count} tickets · ${r.abiertos} abierto${r.abiertos !== 1 ? "s" : ""}</span>
+        </div>`).join("")}
+    </div>` : ""}
+
     <div class="grid-2">
       ${BUZONES.map((b) => {
         const items = state.tickets.filter((t) => t.buzon === b.id);
@@ -1105,20 +1159,42 @@ function renderEstadisticas() {
 
 function drawChart() {
   const ctx = document.getElementById("grafico-categorias");
-  if (!ctx) return;
-  const counts = CATEGORIAS.map((c) => state.tickets.filter((t) => t.categoria === c).length);
-  const labels = CATEGORIAS.filter((_, i) => counts[i] > 0);
-  const data = counts.filter((c) => c > 0);
-  if (state.chartInstance) state.chartInstance.destroy();
-  state.chartInstance = new Chart(ctx, {
-    type: "bar",
-    data: { labels, datasets: [{ data, backgroundColor: "#2C5F63", borderRadius: 6 }] },
-    options: {
-      indexAxis: "y",
-      plugins: { legend: { display: false } },
-      scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
-    },
-  });
+  if (ctx) {
+    const counts = CATEGORIAS.map((c) => state.tickets.filter((t) => t.categoria === c).length);
+    const labels = CATEGORIAS.filter((_, i) => counts[i] > 0);
+    const data = counts.filter((c) => c > 0);
+    if (state.chartInstance) state.chartInstance.destroy();
+    state.chartInstance = new Chart(ctx, {
+      type: "bar",
+      data: { labels, datasets: [{ data, backgroundColor: "#2C5F63", borderRadius: 6 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        indexAxis: "y",
+        scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+      },
+    });
+  }
+
+  const ctxDer = document.getElementById("grafico-derivacion");
+  if (ctxDer) {
+    const countsDer = DERIVACIONES.map((d) => state.tickets.filter((t) => t.derivacion === d).length);
+    const labelsDer = DERIVACIONES.filter((_, i) => countsDer[i] > 0);
+    const dataDer = countsDer.filter((c) => c > 0);
+    const coloresDer = DERIVACIONES.filter((_, i) => countsDer[i] > 0).map((d) => DERIVACION_COLORS[d].replace("var(--", "").replace(")", ""));
+    if (state.chartDerivacionInstance) state.chartDerivacionInstance.destroy();
+    if (dataDer.length === 0) return;
+    state.chartDerivacionInstance = new Chart(ctxDer, {
+      type: "bar",
+      data: { labels: labelsDer, datasets: [{ data: dataDer, backgroundColor: labelsDer.map((d) => DERIVACION_COLORS[d]), borderRadius: 6 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        indexAxis: "y",
+        scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+      },
+    });
+  }
 }
 
 function renderModal() {
