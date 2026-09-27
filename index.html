@@ -320,6 +320,9 @@
   .semaforo-sub { font-size: 13.5px; color: var(--muted); margin-top: 2px; }
 
   .ranking-cat { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); margin-bottom: 8px; }
+  .ranking-clickable { cursor: pointer; }
+  .ranking-clickable:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
+  .ranking-clickable svg { margin-left: auto; color: var(--muted); flex-shrink: 0; }
   .ranking-luz { width: 12px; height: 12px; border-radius: 999px; background: var(--sem-color); flex-shrink: 0; }
   .ranking-nombre { font-weight: 700; font-size: 13.5px; flex: 1; }
   .ranking-count { font-size: 12.5px; color: var(--muted); }
@@ -357,7 +360,7 @@ const authClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.ANON_KEY);
 
 // Súbela cada vez que reemplaces este archivo, para saber a simple vista
 // qué versión tienes cargada (se muestra chica, junto al título).
-const APP_VERSION = "v4.2 · 9 sep 2026";
+const APP_VERSION = "v4.3 · 9 sep 2026";
 
 const ESTADOS = ["Nuevo", "En gestión", "Esperando respuesta", "Resuelto"];
 const ESTADO_COLORS = {
@@ -711,7 +714,7 @@ function renderTablero() {
     if (state.filtroDerivacion !== "todos" && (state.filtroDerivacion === "ninguna" ? t.derivacion : t.derivacion !== state.filtroDerivacion)) return false;
     if (state.soloUrgentes && !(t.estado !== "Resuelto" && daysSince(t.last_activity_at) >= 3)) return false;
     if (!q) return true;
-    return [t.folio, t.tema, t.resumen, t.solicitante].some((v) => (v || "").toLowerCase().includes(q));
+    return [t.folio, t.tema, t.resumen, t.solicitante, t.categoria].some((v) => (v || "").toLowerCase().includes(q));
   });
   const chips = [`<button class="chip ${state.filtroBuzon === "todos" ? "active" : ""}" style="--chip-color: var(--ink)" data-buzon="todos">Todos (${state.tickets.length})</button>`]
     .concat(BUZONES.map((b) => `<button class="chip ${state.filtroBuzon === b.id ? "active" : ""}" style="--chip-color: ${b.color}" data-buzon="${b.id}">${b.label} (${state.tickets.filter((t) => t.buzon === b.id).length})</button>`));
@@ -1072,10 +1075,11 @@ function renderInicio() {
 
     <h3 style="font-size:14px; margin-bottom:10px;">Qué está pidiendo más atención</h3>
     ${ranking.length === 0 ? `<p class="muted" style="font-size:13px;">No hay tickets abiertos por categoría todavía.</p>` : ranking.map((r) => `
-      <div class="ranking-cat" style="--sem-color: ${SEM_COLOR_VAR[r.sem]}">
+      <div class="ranking-cat ranking-clickable" style="--sem-color: ${SEM_COLOR_VAR[r.sem]}" data-ir-categoria="${escapeAttr(r.cat)}">
         <span class="ranking-luz"></span>
         <span class="ranking-nombre">${escapeHtml(r.cat)}</span>
         <span class="ranking-count">${r.count} ticket${r.count !== 1 ? "s" : ""} abierto${r.count !== 1 ? "s" : ""}</span>
+        ${iconSvg("chevron-right", 14)}
       </div>`).join("")}`;
 }
 
@@ -1128,24 +1132,26 @@ function renderEstadisticas() {
     ${atrasoPorCategoria.length > 0 ? `
     <div class="panel">
       <h3 style="font-size:15px; margin-bottom:4px;">${iconSvg("alert-triangle", 15)} Dónde se está estancando más</h3>
-      <p class="muted" style="font-size:12.5px; margin-bottom:12px;">Categorías con más días promedio sin gestión (entre tickets abiertos)</p>
+      <p class="muted" style="font-size:12.5px; margin-bottom:12px;">Categorías con más días promedio sin gestión (entre tickets abiertos) — clic para ver esos tickets</p>
       ${atrasoPorCategoria.map((c) => `
-        <div class="ranking-cat" style="--sem-color: ${c.promedioDias >= 3 ? "var(--sem-rojo)" : "var(--sem-amarillo)"}">
+        <div class="ranking-cat ranking-clickable" style="--sem-color: ${c.promedioDias >= 3 ? "var(--sem-rojo)" : "var(--sem-amarillo)"}" data-ir-categoria="${escapeAttr(c.cat)}">
           <span class="ranking-luz"></span>
           <span class="ranking-nombre">${escapeHtml(c.cat)}</span>
           <span class="ranking-count">${c.count} abierto${c.count !== 1 ? "s" : ""} · ${c.promedioDias} d promedio</span>
+          ${iconSvg("chevron-right", 14)}
         </div>`).join("")}
     </div>` : ""}
 
     ${recurrentes.length > 0 ? `
     <div class="panel">
       <h3 style="font-size:15px; margin-bottom:4px;">${iconSvg("repeat", 15)} Residentes con casos recurrentes</h3>
-      <p class="muted" style="font-size:12.5px; margin-bottom:12px;">3 o más tickets — puede indicar un problema de fondo sin resolver</p>
+      <p class="muted" style="font-size:12.5px; margin-bottom:12px;">3 o más tickets — puede indicar un problema de fondo sin resolver — clic para ver sus tickets</p>
       ${recurrentes.map((r) => `
-        <div class="ranking-cat" style="--sem-color: ${r.abiertos > 0 ? "var(--sem-amarillo)" : "var(--sem-verde)"}">
+        <div class="ranking-cat ranking-clickable" style="--sem-color: ${r.abiertos > 0 ? "var(--sem-amarillo)" : "var(--sem-verde)"}" data-ir-solicitante="${escapeAttr(r.nombre)}">
           <span class="ranking-luz"></span>
           <span class="ranking-nombre">${escapeHtml(r.nombre)}</span>
           <span class="ranking-count">${r.count} tickets · ${r.abiertos} abierto${r.abiertos !== 1 ? "s" : ""}</span>
+          ${iconSvg("chevron-right", 14)}
         </div>`).join("")}
     </div>` : ""}
 
@@ -1354,6 +1360,19 @@ function attachEvents() {
   document.querySelectorAll("[data-buzon]").forEach((b) => b.onclick = () => { state.filtroBuzon = b.dataset.buzon; render(); });
   document.querySelectorAll("[data-estado-movil]").forEach((b) => b.onclick = () => { state.estadoFiltroMovil = b.dataset.estadoMovil; render(); });
   document.querySelectorAll("[data-derivacion-filtro]").forEach((b) => b.onclick = () => { state.filtroDerivacion = b.dataset.derivacionFiltro; render(); });
+
+  document.querySelectorAll("[data-ir-categoria]").forEach((el) => el.onclick = () => {
+    state.busqueda = el.dataset.irCategoria;
+    state.filtroDerivacion = "todos"; state.filtroBuzon = "todos"; state.soloUrgentes = false;
+    state.vista = "tablero"; state.modoVista = "tabla";
+    render();
+  });
+  document.querySelectorAll("[data-ir-solicitante]").forEach((el) => el.onclick = () => {
+    state.busqueda = el.dataset.irSolicitante;
+    state.filtroDerivacion = "todos"; state.filtroBuzon = "todos"; state.soloUrgentes = false;
+    state.vista = "tablero"; state.modoVista = "tabla";
+    render();
+  });
   document.querySelectorAll("[data-open]").forEach((c) => c.onclick = () => { state.detalleId = Number(c.dataset.open); state.modalTab = "datos"; render(); });
   document.querySelectorAll("[data-modo]").forEach((b) => b.onclick = () => { state.modoVista = b.dataset.modo; render(); });
   document.querySelectorAll("[data-sort]").forEach((th) => th.onclick = () => {
