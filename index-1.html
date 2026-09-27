@@ -1,0 +1,1801 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>JDVM · Seguimiento de correos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root {
+    --bg: #F2F3F0;
+    --surface: #FFFFFF;
+    --ink: #15181B;
+    --muted: #4B5563;
+    --line: #E2E3DE;
+    --accent: #2C5F63;
+    --accent-dark: #1F4548;
+    --contacto: #2C5F63;
+    --gastos: #A6631B;
+    --alta: #B3261E;
+    --media: #A6631B;
+    --baja: #4B5563;
+    --resuelto: #16A34A;
+    --nuevo: #2563EB;
+    --gestion: #D97706;
+    --espera: #7C3AED;
+    --gc: #0D9488;
+    --ops: #0891B2;
+    --admin: #4F46E5;
+    --poliza: #BE185D;
+    --comite: #78716C;
+    --mudanza: #65A30D;
+    --tarjeta: #EAB308;
+    --sem-rojo: #DC2626;
+    --sem-amarillo: #D97706;
+    --sem-verde: #16A34A;
+    --shadow-sm: 0 1px 2px rgba(21,24,27,0.06);
+    --shadow-md: 0 6px 20px rgba(21,24,27,0.08);
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { max-width: 100%; overflow-x: hidden; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  h1, h2, h3, h4 { font-family: 'Space Grotesk', ui-sans-serif, sans-serif; margin: 0; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  button, select, input, textarea { font-family: inherit; font-size: inherit; }
+  button { cursor: pointer; }
+
+  /* Focus visibility for accessibility */
+  input:focus, textarea:focus, select:focus, button:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  header.topbar {
+    border-bottom: 1px solid var(--line);
+    padding: 18px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    background: var(--surface);
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-mark {
+    width: 40px; height: 40px; border-radius: 11px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; flex-shrink: 0;
+  }
+  .eyebrow { font-size: 11px; letter-spacing: 0.09em; color: var(--muted); font-weight: 600; text-transform: uppercase; }
+  h1.title { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    border-radius: 999px; padding: 7px 14px; font-size: 13px; font-weight: 600;
+  }
+  .pill-warn { background: #FBEAEA; color: var(--alta); border: 1px solid rgba(179,38,30,0.25); }
+
+  .view-toggle { display: flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+  .view-toggle button {
+    border: none; background: transparent; color: var(--muted);
+    padding: 9px 16px; font-size: 13px; font-weight: 700;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .view-toggle button.active { background: var(--accent); color: #fff; }
+
+  .layout { display: flex; gap: 24px; padding: 24px 28px; align-items: flex-start; flex-wrap: wrap; }
+  aside.composer {
+    width: 340px; flex-shrink: 0;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 20px; box-shadow: var(--shadow-sm); position: sticky; top: 20px;
+  }
+  aside.composer h2 { font-size: 16px; font-weight: 700; margin-bottom: 4px; display:flex; align-items:center; gap:8px; }
+  aside.composer p.hint { color: var(--muted); font-size: 13px; margin: 4px 0 14px; }
+
+  textarea, input[type=text], select {
+    width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px;
+    background: var(--surface); color: var(--ink); font-size: 14px;
+  }
+  textarea { resize: vertical; }
+  label.field-label { font-size: 11px; color: var(--muted); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; display: block; margin: 12px 0 6px; }
+
+  .file-drop {
+    border: 1.5px dashed var(--line); border-radius: 10px; padding: 10px 12px;
+    display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px;
+    cursor: pointer; margin-top: 10px;
+  }
+  .file-drop input { display: none; }
+
+  .btn-primary {
+    width: 100%; margin-top: 14px; border: none; border-radius: 10px; padding: 13px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark)); color: #fff;
+    font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;
+    box-shadow: var(--shadow-sm);
+  }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-ghost {
+    border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 9px 14px;
+    font-weight: 600; font-size: 13px; color: var(--ink);
+  }
+
+  main.board-area { flex: 1; min-width: 0; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+  .chips-scroll { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; -webkit-overflow-scrolling: touch; }
+  .chips-scroll .chip { flex-shrink: 0; white-space: nowrap; }
+  .chip {
+    border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 700;
+    border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  }
+  .chip.active { background: var(--chip-color, var(--accent)); color: #fff; border-color: var(--chip-color, var(--accent)); }
+
+  .board { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 10px; align-items: flex-start; }
+  .board-col { flex: 0 0 290px; min-width: 290px; }
+  .column-body { display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 320px); min-height: 80px; overflow-y: auto; padding-right: 4px; }
+  @media (max-width: 640px) {
+    .board-col { flex-basis: 82vw; min-width: 82vw; }
+    .layout { flex-direction: column; padding: 16px; }
+    aside.composer { width: 100%; position: static; }
+    header.topbar { padding: 14px 16px; }
+    h1.title { font-size: 18px; }
+    .semaforo-grande { padding: 16px; gap: 12px; }
+    .semaforo-luz { width: 34px; height: 34px; }
+    .semaforo-titulo { font-size: 16px; }
+    .lectura-bar { padding: 8px 16px; flex-wrap: wrap; }
+    .modal { max-height: calc(100vh - 24px); border-radius: 14px; }
+    .overlay { padding: 8px; }
+    .modal-header, .tabs-row-sticky, .modal-scroll { padding-left: 16px; padding-right: 16px; }
+  }
+
+  .column-header {
+    display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+    border-radius: 10px 10px 0 0; border-bottom: 3px solid var(--col-color);
+    background: color-mix(in srgb, var(--col-color) 10%, transparent);
+    margin-bottom: 12px;
+  }
+  .column-header .dot { width: 9px; height: 9px; border-radius: 999px; background: var(--col-color); }
+  .column-header h3 { font-size: 13.5px; color: var(--col-color); font-weight: 800; }
+  .column-count {
+    margin-left: auto; background: var(--col-color); color: #fff; font-size: 11px; font-weight: 700;
+    width: 22px; height: 22px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+  }
+  .empty-col { border: 1px dashed var(--line); border-radius: 10px; padding: 16px; text-align: center; color: var(--muted); font-size: 12.5px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px;
+    border-left: 4px solid var(--buzon-color); border-top: 3px solid var(--estado-color);
+    box-shadow: var(--shadow-sm); transition: box-shadow .15s ease, transform .15s ease;
+    cursor: pointer;
+  }
+  .card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  .card[draggable="true"] { cursor: grab; }
+  .card.dragging { opacity: 0.4; }
+  .column-header { cursor: grab; }
+  .column-body.drop-target { background: color-mix(in srgb, var(--accent) 10%, transparent); outline: 2px dashed var(--accent); outline-offset: -2px; border-radius: 8px; }
+  .board-col.col-drop-target > .column-header { outline: 2px dashed var(--ink); outline-offset: 2px; }
+  .card-top { display: flex; justify-content: space-between; align-items: flex-start; }
+  .card-id { color: var(--muted); font-size: 11px; }
+  .card-title { font-size: 15px; font-weight: 700; margin-top: 5px; }
+  .card-summary { color: var(--muted); font-size: 13px; margin-top: 4px; line-height: 1.4; }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .badge { border-radius: 999px; padding: 3px 9px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
+  .card-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .card-footer .urgent { color: var(--alta); font-weight: 700; display: flex; align-items: center; gap: 4px; }
+  .estado-select {
+    width: 100%; margin-top: 10px; border-radius: 8px; padding: 8px 10px; font-weight: 700; font-size: 12.5px;
+    border: 1.5px solid var(--estado-color); background: color-mix(in srgb, var(--estado-color) 12%, white); color: var(--estado-color);
+  }
+  .icon-btn { border: none; background: transparent; color: var(--muted); padding: 4px; border-radius: 6px; }
+
+  /* Modal */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(21,24,27,0.5); display: flex; align-items: center;
+    justify-content: center; padding: 24px 12px; z-index: 50;
+  }
+  .modal {
+    background: var(--surface); border-radius: 18px; width: 100%; max-width: 680px;
+    max-height: calc(100vh - 48px); display: flex; flex-direction: column; overflow: hidden;
+  }
+  .modal-scroll { padding: 26px; overflow-y: auto; }
+  .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 26px 0; flex-shrink: 0; flex-wrap: wrap; gap: 8px; }
+  .modal-header h3 { min-width: 0; overflow-wrap: break-word; }
+  .tabs-row-sticky { padding: 0 26px; flex-shrink: 0; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .grid-2 { grid-template-columns: 1fr; } }
+  .transfer-box { background: color-mix(in srgb, var(--gastos) 8%, white); border: 1px solid color-mix(in srgb, var(--gastos) 30%, white); border-radius: 12px; padding: 12px; font-size: 13px; margin-bottom: 16px; }
+  .history-box { border: 1px solid var(--line); border-radius: 12px; padding: 12px; max-height: 170px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+  .history-entry .h-meta { color: var(--muted); font-size: 10.5px; }
+  .ai-suggestion { background: #F7F7F5; border: 1.5px solid var(--line); border-radius: 12px; padding: 14px; font-size: 14.5px; white-space: pre-wrap; line-height: 1.5; }
+  .sparkle-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--accent); }
+
+  /* Stats */
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+  @media (max-width: 720px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+  .stat-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .stat-value { font-size: 26px; font-weight: 800; font-family: 'Space Grotesk', sans-serif; }
+  .stat-label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
+
+  .loading-overlay {
+    position: absolute; inset: 0; background: color-mix(in srgb, var(--accent) 8%, transparent);
+    display: flex; align-items: center; justify-content: center; border-radius: 10px;
+  }
+  .loading-chip { background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .spin { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .relative { position: relative; }
+  .error-text { color: var(--alta); font-size: 12.5px; margin-top: 8px; }
+  .muted { color: var(--muted); }
+
+  .search-box {
+    display: flex; align-items: center; gap: 8px; background: var(--surface);
+    border: 1px solid var(--line); border-radius: 999px; padding: 9px 16px; flex: 1; min-width: 200px;
+  }
+  .search-box input { border: none; outline: none; flex: 1; font-size: 13.5px; background: transparent; padding: 0; }
+  .search-box input:focus { outline: none; }
+
+  .toast-stack { position: fixed; bottom: 20px; right: 20px; z-index: 100; display: flex; flex-direction: column; gap: 8px; }
+  .toast {
+    background: var(--ink); color: #fff; padding: 11px 16px; border-radius: 10px; font-size: 13.5px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px; box-shadow: var(--shadow-md);
+    animation: toast-in .2s ease;
+  }
+  .toast.error { background: var(--alta); }
+  .toast.ok { background: var(--accent-dark); }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  .login-screen {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .login-card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 32px;
+    width: 100%; max-width: 380px; box-shadow: var(--shadow-md); text-align: center;
+  }
+  .login-mark {
+    width: 52px; height: 52px; border-radius: 14px; margin: 0 auto 16px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+    display: flex; align-items: center; justify-content: center; color: #fff;
+  }
+  .login-card input { margin-bottom: 12px; }
+  .tabs-row { display: flex; gap: 6px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+  .tab-btn {
+    border: none; background: transparent; padding: 10px 4px; font-size: 13.5px; font-weight: 700; color: var(--muted);
+    border-bottom: 2.5px solid transparent; margin-right: 14px;
+  }
+  .tab-btn.active { color: var(--accent); border-color: var(--accent); }
+  .mode-toggle { display: flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; flex-shrink: 0; }
+  .mode-toggle button { border: none; background: transparent; color: var(--muted); padding: 9px 14px; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+  .mode-toggle button.active { background: var(--ink); color: #fff; }
+
+  .table-scroll { overflow-x: auto; border-radius: 12px; }
+  table.ticket-table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 12px; overflow: hidden; border: 1px solid var(--line); min-width: 640px; }
+  table.ticket-table th { text-align: left; font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; padding: 12px; border-bottom: 1px solid var(--line); cursor: pointer; user-select: none; white-space: nowrap; }
+  table.ticket-table th:hover { color: var(--ink); }
+  table.ticket-table td { padding: 12px; border-bottom: 1px solid var(--line); font-size: 13.5px; vertical-align: middle; }
+  table.ticket-table tr:last-child td { border-bottom: none; }
+  table.ticket-table tr.row-clickable { cursor: pointer; }
+  table.ticket-table tr.row-clickable:hover { background: #FAFAF8; }
+  .sort-arrow { font-size: 10px; margin-left: 4px; opacity: 0.6; }
+  .pill-warn.clickable { cursor: pointer; border: 1px solid rgba(179,38,30,0.25); }
+  .pill-warn.clickable.active-filter { background: var(--alta); color: #fff; }
+
+  .lectura-bar {
+    display: flex; align-items: center; gap: 10px; padding: 9px 28px; flex-wrap: wrap;
+    background: color-mix(in srgb, var(--lectura-color) 8%, var(--surface));
+    border-bottom: 1px solid var(--line); font-size: 13px;
+  }
+  .lectura-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--lectura-color); flex-shrink: 0; }
+
+  .bulk-bar {
+    display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1.5px solid var(--accent);
+    border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; font-weight: 600; flex-wrap: wrap;
+  }
+  .bulk-bar button { flex-shrink: 0; }
+  .row-check { width: 34px; }
+
+  .email-block { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .email-tag { display: inline-block; margin: 8px 10px 0; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--accent); color: #fff; }
+  .email-meta-row { padding: 8px 12px; border-bottom: 1px solid var(--line); background: #FAFAF8; font-size: 12.5px; }
+  .email-meta-row strong { color: var(--muted); font-weight: 700; margin-right: 4px; }
+  .email-body { padding: 10px 12px; font-size: 13px; white-space: pre-wrap; line-height: 1.5; max-height: 220px; overflow-y: auto; }
+
+  .semaforo-grande {
+    display: flex; align-items: center; gap: 18px; padding: 22px 26px; border-radius: 16px;
+    background: color-mix(in srgb, var(--sem-color) 10%, var(--surface)); border: 1.5px solid var(--sem-color); margin-bottom: 20px;
+  }
+  .semaforo-luz { width: 46px; height: 46px; border-radius: 999px; background: var(--sem-color); flex-shrink: 0; box-shadow: 0 0 0 6px color-mix(in srgb, var(--sem-color) 18%, transparent); }
+  .semaforo-titulo { font-family: 'Space Grotesk', sans-serif; font-size: 19px; font-weight: 700; color: var(--sem-color); }
+  .semaforo-sub { font-size: 13.5px; color: var(--muted); margin-top: 2px; }
+
+  .ranking-cat { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); margin-bottom: 8px; }
+  .ranking-luz { width: 12px; height: 12px; border-radius: 999px; background: var(--sem-color); flex-shrink: 0; }
+  .ranking-nombre { font-weight: 700; font-size: 13.5px; flex: 1; }
+  .ranking-count { font-size: 12.5px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+<div class="toast-stack" id="toast-stack"></div>
+
+<script>
+// ============================================================
+// Configuración: completa con tus datos de Supabase
+// ============================================================
+const CONFIG = {
+  SUPABASE_URL: "https://kyjvzjyiynwscnyxxoae.supabase.co",
+  ANON_KEY: "sb_publishable_arrTh3I_yfqNUZqzm4BkZQ_7s_EKLfv",
+};
+const ENDPOINT = CONFIG.SUPABASE_URL + "/functions/v1/tickets-api";
+const ES_MOBIL = window.innerWidth <= 700;
+
+function cargarOrdenEstados() {
+  try {
+    const guardado = JSON.parse(localStorage.getItem("jdvm_orden_estados") || "null");
+    if (Array.isArray(guardado) && guardado.length === ESTADOS.length && ESTADOS.every((e) => guardado.includes(e))) return guardado;
+  } catch { /* usa el orden por defecto */ }
+  return [...ESTADOS];
+}
+function guardarOrdenEstados(orden) {
+  try { localStorage.setItem("jdvm_orden_estados", JSON.stringify(orden)); } catch { /* no crítico */ }
+}
+let arrastrandoTicketId = null;
+let arrastrandoEstadoCol = null;
+const authClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.ANON_KEY);
+
+// Súbela cada vez que reemplaces este archivo, para saber a simple vista
+// qué versión tienes cargada (se muestra chica, junto al título).
+const APP_VERSION = "v4.1 · 9 sep 2026";
+
+const ESTADOS = ["Nuevo", "En gestión", "Esperando respuesta", "Resuelto"];
+const ESTADO_COLORS = {
+  "Nuevo": "var(--nuevo)", "En gestión": "var(--gestion)",
+  "Esperando respuesta": "var(--espera)", "Resuelto": "var(--resuelto)",
+};
+const DERIVACIONES = ["Mudanza", "Tarjeta", "Gasto Común", "Operaciones", "Administración", "Póliza", "Comité"];
+const DERIVACION_COLORS = {
+  "Mudanza": "var(--mudanza)", "Tarjeta": "var(--tarjeta)",
+  "Gasto Común": "var(--gc)", "Operaciones": "var(--ops)", "Administración": "var(--admin)",
+  "Póliza": "var(--poliza)", "Comité": "var(--comite)",
+};
+const PRIORIDAD_RANK = { alta: 0, media: 1, baja: 2 };
+const PRIORIDAD_COLORS = { alta: "var(--alta)", media: "var(--media)", baja: "var(--baja)" };
+const BUZONES = [
+  { id: "contacto", label: "Atención Residentes", color: "var(--contacto)", icon: "mail" },
+  { id: "gastos", label: "Gastos Comunes", color: "var(--gastos)", icon: "landmark" },
+];
+const CATEGORIAS = [
+  "Pagos y cobranza", "Comprobante de transferencia", "Mantención y reparaciones",
+  "Ruidos y convivencia", "Seguridad y acceso", "Reservas de espacios",
+  "Mudanzas", "Consulta general", "Reclamo", "Otro",
+];
+
+let state = {
+  session: null, loginError: "", loginCargando: false,
+  tickets: [], historial: [], vista: "inicio", filtroBuzon: "todos", busqueda: "",
+  soloAbiertos: true, soloUrgentes: false, modoVista: "kanban",
+  sortCampo: "prioridad", sortDir: "asc",
+  modalTab: "datos",
+  archivados: [], archivadosCargados: false, historialArchivados: [],
+  seleccionados: new Set(),
+  composerAbierto: false, estadoFiltroMovil: "todos", ordenEstados: cargarOrdenEstados(), filtroDerivacion: "todos",
+  lecturaActiva: null, lecturaIncluyeGastos: false, gastoIA: null,
+  mostrarLeyenda: false, plantillas: [], plantillasCargadas: false,
+  cargando: false, error: "", procesandoNuevo: false, imagenNueva: null,
+  detalleId: null, chartInstance: null, chartDerivacionInstance: null,
+};
+
+// ------------------------------------------------------------
+// API helper: todo pasa por la Edge Function
+// ------------------------------------------------------------
+async function api(action, payload) {
+  const token = state.session ? state.session.access_token : CONFIG.ANON_KEY;
+  const res = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + token,
+      "apikey": CONFIG.ANON_KEY,
+    },
+    body: JSON.stringify({ action, payload }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
+async function iniciarSesion(email, password) {
+  state.loginCargando = true; state.loginError = ""; renderLogin();
+  const { data, error } = await authClient.auth.signInWithPassword({ email, password });
+  state.loginCargando = false;
+  if (error) { state.loginError = "Correo o contraseña incorrectos."; renderLogin(); return; }
+  state.session = data.session;
+  cargarTodo();
+}
+
+async function cerrarSesion() {
+  await authClient.auth.signOut();
+  state.session = null;
+  renderLogin();
+}
+
+function renderLogin() {
+  document.getElementById("app").innerHTML = `
+    <div class="login-screen">
+      <div class="login-card">
+        <div class="login-mark">${iconSvg("sparkles", 24)}</div>
+        <h1 class="title" style="margin-bottom:4px;">JDVM · Seguimiento</h1>
+        <p class="muted" style="font-size:13px; margin-bottom:20px;">Inicia sesión para continuar</p>
+        <input type="text" id="login-email" placeholder="Correo" autocomplete="username" />
+        <input type="password" id="login-password" placeholder="Contraseña" autocomplete="current-password" />
+        <button class="btn-primary" id="btn-login" ${state.loginCargando ? "disabled" : ""}>
+          ${state.loginCargando ? iconSvg("loader-2", 15, "spin") + " Ingresando…" : "Ingresar"}
+        </button>
+        ${state.loginError ? `<p class="error-text">${state.loginError}</p>` : ""}
+      </div>
+    </div>`;
+  lucide.createIcons();
+  document.getElementById("btn-login").onclick = () => {
+    iniciarSesion(document.getElementById("login-email").value, document.getElementById("login-password").value);
+  };
+  document.getElementById("login-password").onkeydown = (e) => { if (e.key === "Enter") document.getElementById("btn-login").click(); };
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result.split(",")[1]);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+function daysSince(iso) { return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); }
+function fmtDate(iso) {
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
+}
+
+function showToast(mensaje, tipo = "ok") {
+  const stack = document.getElementById("toast-stack");
+  const el = document.createElement("div");
+  el.className = "toast " + tipo;
+  el.innerHTML = iconSvg(tipo === "error" ? "alert-circle" : "check-circle-2", 15) + " " + mensaje;
+  stack.appendChild(el);
+  lucide.createIcons();
+  setTimeout(() => { el.style.opacity = "0"; el.style.transition = "opacity .3s"; setTimeout(() => el.remove(), 300); }, 2600);
+}
+
+async function cargarTodo() {
+  state.cargando = true; render();
+  try {
+    const { tickets, historial } = await api("listar_tickets", { soloAbiertos: state.soloAbiertos });
+    state.tickets = tickets || [];
+    state.historial = historial || [];
+  } catch (e) {
+    state.error = "No se pudo conectar con el servidor. Revisa SUPABASE_URL / ANON_KEY en el código.";
+  } finally {
+    state.cargando = false; render();
+  }
+  cargarEstadoLectura();
+  cargarGastoIA();
+}
+
+async function cargarEstadoLectura() {
+  try {
+    const r = await api("consultar_lectura_correos", {});
+    state.lecturaActiva = !!r.activo;
+    state.lecturaIncluyeGastos = !!r.incluye_gastos;
+    render();
+  } catch (e) { /* si falla, simplemente no se muestra el botón */ }
+}
+
+async function cargarGastoIA() {
+  try {
+    const r = await api("consultar_gasto_ia", {});
+    state.gastoIA = r;
+    render();
+  } catch (e) { /* si falla, simplemente no se muestra la tarjeta de gasto */ }
+}
+
+// Cola de tickets por urgencia (misma lógica que el orden del Kanban),
+// usada para poder navegar de un ticket al siguiente sin volver al panel.
+function colaUrgencia() {
+  return [...state.tickets].sort((a, b) => {
+    const pr = PRIORIDAD_RANK[a.prioridad] - PRIORIDAD_RANK[b.prioridad];
+    if (pr !== 0) return pr;
+    return new Date(a.last_activity_at) - new Date(b.last_activity_at);
+  });
+}
+
+function irTicketAdyacente(direccion) {
+  const cola = colaUrgencia();
+  if (cola.length === 0) { state.detalleId = null; render(); return; }
+  const idx = cola.findIndex((t) => t.id === state.detalleId);
+  const nuevoIdx = idx === -1 ? 0 : (idx + direccion + cola.length) % cola.length;
+  state.detalleId = cola[nuevoIdx].id;
+  state.modalTab = "datos";
+  render();
+}
+
+// Después de resolver/archivar/eliminar/restaurar un ticket desde el modal,
+// salta directo al siguiente que necesite revisión en vez de cerrar todo.
+async function avanzarAlSiguientePendiente() {
+  await cargarTodo();
+  const cola = colaUrgencia();
+  state.detalleId = cola.length > 0 ? cola[0].id : null;
+  state.modalTab = "datos";
+  render();
+}
+
+async function alternarLectura() {
+  const nuevoEstado = !state.lecturaActiva;
+  try {
+    await api("establecer_lectura_correos", { activo: nuevoEstado, incluirGastos: state.lecturaIncluyeGastos });
+    state.lecturaActiva = nuevoEstado;
+    showToast(nuevoEstado ? "Lectura automática reanudada" : "Lectura automática pausada");
+    render();
+  } catch (e) {
+    showToast("No se pudo cambiar el estado", "error");
+  }
+}
+
+async function cargarPlantillas() {
+  try {
+    const { plantillas } = await api("listar_plantillas", {});
+    state.plantillas = plantillas || [];
+    state.plantillasCargadas = true;
+    render();
+  } catch (e) { /* sin plantillas por ahora */ }
+}
+
+async function crearPlantilla() {
+  const nombre = document.getElementById("nueva-plantilla-nombre").value.trim();
+  const texto = document.getElementById("nueva-plantilla-texto").value.trim();
+  if (!nombre || !texto) return;
+  try {
+    await api("crear_plantilla", { nombre, texto });
+    showToast("Plantilla guardada");
+    await cargarPlantillas();
+  } catch (e) { showToast("No se pudo guardar la plantilla", "error"); }
+}
+
+async function eliminarPlantilla(id) {
+  if (!confirm("¿Eliminar esta plantilla?")) return;
+  try {
+    await api("eliminar_plantilla", { id });
+    await cargarPlantillas();
+  } catch (e) { showToast("No se pudo eliminar la plantilla", "error"); }
+}
+
+async function usarPlantilla(id) {
+  const p = state.plantillas.find((x) => x.id === Number(id));
+  if (!p) return;
+  const zona = document.getElementById("zona-plantilla-usada");
+  zona.innerHTML = `
+    <div class="ai-suggestion">${escapeHtml(p.texto)}
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; gap:8px; flex-wrap:wrap;">
+        <span class="muted" style="font-size:12px;">Al copiar, se registra en el historial y pasa a "Esperando respuesta".</span>
+        <button class="btn-ghost" id="btn-copiar-plantilla" style="flex-shrink:0;">${iconSvg("copy", 13)} Copiar</button>
+      </div>
+    </div>`;
+  document.getElementById("btn-copiar-plantilla").onclick = async () => {
+    await navigator.clipboard.writeText(p.texto);
+    await api("registrar_respuesta_enviada", { id: state.detalleId, texto: p.texto });
+    showToast("Copiado y ticket movido a \"Esperando respuesta\"");
+    await cargarTodo();
+    document.getElementById("btn-copiar-plantilla").innerHTML = iconSvg("check", 13) + " Copiado";
+  };
+}
+
+async function cargarArchivados() {
+  try {
+    const { tickets, historial } = await api("listar_tickets", { archivados: true });
+    state.archivados = tickets || [];
+    state.historialArchivados = historial || [];
+    state.archivadosCargados = true;
+    render();
+  } catch (e) {
+    showToast("No se pudieron cargar los archivados", "error");
+  }
+}
+
+function historialDe(ticketId) {
+  return [...state.historial, ...state.historialArchivados].filter((h) => h.ticket_id === ticketId);
+}
+
+function renderHistorialEntry(h) {
+  let texto = h.texto;
+  let etiqueta = "";
+  const tagM = texto.match(/^\[([^\]]+)\]\s*/);
+  if (tagM) { etiqueta = tagM[1]; texto = texto.slice(tagM[0].length); }
+
+  const m = h.tipo === "correo" ? texto.match(/^De:\s*(.*)\nAsunto:\s*(.*)\n(?:Carpeta original:\s*(.*)\n)?\n([\s\S]*)$/) : null;
+  if (m) {
+    const [, de, asunto, carpeta, cuerpo] = m;
+    return `
+      ${etiqueta ? `<span class="email-tag">${escapeHtml(etiqueta)}</span>` : ""}
+      <div class="email-block" style="${etiqueta ? "margin-top:6px;" : ""}">
+        <div class="email-meta-row"><strong>De:</strong>${escapeHtml(de)}</div>
+        <div class="email-meta-row" style="${carpeta ? "" : "border-bottom:none;"}"><strong>Asunto:</strong>${escapeHtml(asunto)}</div>
+        ${carpeta ? `<div class="email-meta-row" style="border-bottom:none;"><strong>Carpeta original:</strong>${escapeHtml(carpeta)}</div>` : ""}
+        <div class="email-body">${escapeHtml(cuerpo || "(sin contenido de texto)")}</div>
+      </div>`;
+  }
+  return `<p style="font-size:13px; margin:2px 0 0; white-space:pre-wrap;">${escapeHtml(texto)}</p>`;
+}
+
+// ------------------------------------------------------------
+// Render
+// ------------------------------------------------------------
+function render() {
+  const app = document.getElementById("app");
+  const urgentes = state.tickets.filter((t) => t.estado !== "Resuelto" && daysSince(t.last_activity_at) >= 3).length;
+
+  app.innerHTML = `
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">${iconSvg("sparkles", 20)}</div>
+        <div>
+          <div class="eyebrow">JDVM · PRODUCCIÓN · <span style="font-weight:400; text-transform:none; letter-spacing:normal;">${APP_VERSION}</span></div>
+          <h1 class="title">Seguimiento de correos</h1>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        ${urgentes > 0 ? `<button class="pill pill-warn clickable ${state.soloUrgentes ? "active-filter" : ""}" id="badge-urgentes">${iconSvg("alert-triangle", 15)} ${urgentes} sin gestión +3 días</button>` : ""}
+        <button class="btn-ghost" id="toggle-resueltos">${state.soloAbiertos ? iconSvg("eye", 14) + " Ver resueltos" : iconSvg("eye-off", 14) + " Ocultar resueltos"}</button>
+        <div class="view-toggle">
+          <button data-vista="inicio" class="${state.vista === "inicio" ? "active" : ""}">${iconSvg("sun", 14)} Inicio</button>
+          <button data-vista="tablero" class="${state.vista === "tablero" ? "active" : ""}">${iconSvg("layout-grid", 14)} Tablero</button>
+          <button data-vista="estadisticas" class="${state.vista === "estadisticas" ? "active" : ""}">${iconSvg("bar-chart-3", 14)} Estadísticas</button>
+          <button data-vista="archivados" class="${state.vista === "archivados" ? "active" : ""}">${iconSvg("archive", 14)} Archivados</button>
+        </div>
+        <button class="icon-btn" id="btn-leyenda" aria-label="Ver leyenda de colores" title="Leyenda de colores">${iconSvg("help-circle", 18)}</button>
+        <button class="icon-btn" id="btn-logout" aria-label="Cerrar sesión" title="Cerrar sesión">${iconSvg("log-out", 18)}</button>
+      </div>
+    </header>
+    ${state.lecturaActiva !== null ? `
+    <div class="lectura-bar" style="--lectura-color: ${state.lecturaActiva ? "var(--resuelto)" : "var(--muted)"}">
+      <span class="lectura-dot"></span>
+      <span>Lectura automática de correos: <strong>${state.lecturaActiva ? "activa (cada 10 min, buzón contacto)" : "pausada"}</strong></span>
+      <button class="btn-ghost" id="toggle-lectura" style="margin-left:auto;">
+        ${state.lecturaActiva ? iconSvg("pause", 13) + " Pausar" : iconSvg("play", 13) + " Reanudar"}
+      </button>
+    </div>` : ""}
+
+    <div class="layout">
+      <main class="board-area" style="width:100%;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+          <button class="btn-primary" id="abrir-composer" style="width:auto; margin-top:0;">${iconSvg("message-square-plus", 16)} Nuevo ticket</button>
+        </div>
+        ${state.vista === "inicio" ? renderInicio() : state.vista === "tablero" ? renderTablero() : state.vista === "estadisticas" ? renderEstadisticas() : renderArchivados()}
+      </main>
+    </div>
+    ${state.composerAbierto ? renderComposerModal() : ""}
+
+    ${state.detalleId ? renderModal() : ""}
+    ${state.mostrarLeyenda ? renderLeyenda() : ""}
+  `;
+
+  lucide.createIcons();
+  attachEvents();
+  if (state.vista === "estadisticas") drawChart();
+  if (state.vista === "archivados" && !state.archivadosCargados) cargarArchivados();
+}
+
+function iconSvg(name, size = 16, extraClass = "") {
+  return `<i data-lucide="${name}" style="width:${size}px;height:${size}px;" class="${extraClass}"></i>`;
+}
+
+function renderTablero() {
+  const q = state.busqueda.trim().toLowerCase();
+  const visibles = state.tickets.filter((t) => {
+    if (state.filtroBuzon !== "todos" && t.buzon !== state.filtroBuzon) return false;
+    if (state.filtroDerivacion !== "todos" && (state.filtroDerivacion === "ninguna" ? t.derivacion : t.derivacion !== state.filtroDerivacion)) return false;
+    if (state.soloUrgentes && !(t.estado !== "Resuelto" && daysSince(t.last_activity_at) >= 3)) return false;
+    if (!q) return true;
+    return [t.folio, t.tema, t.resumen, t.solicitante].some((v) => (v || "").toLowerCase().includes(q));
+  });
+  const chips = [`<button class="chip ${state.filtroBuzon === "todos" ? "active" : ""}" style="--chip-color: var(--ink)" data-buzon="todos">Todos (${state.tickets.length})</button>`]
+    .concat(BUZONES.map((b) => `<button class="chip ${state.filtroBuzon === b.id ? "active" : ""}" style="--chip-color: ${b.color}" data-buzon="${b.id}">${b.label} (${state.tickets.filter((t) => t.buzon === b.id).length})</button>`));
+
+  const chipsDerivacion = [`<button class="chip ${state.filtroDerivacion === "todos" ? "active" : ""}" style="--chip-color: var(--ink)" data-derivacion-filtro="todos">Todas las derivaciones</button>`]
+    .concat(DERIVACIONES.map((d) => `<button class="chip ${state.filtroDerivacion === d ? "active" : ""}" style="--chip-color: ${DERIVACION_COLORS[d]}" data-derivacion-filtro="${d}">→ ${d} (${state.tickets.filter((t) => t.derivacion === d).length})</button>`));
+
+  if (ES_MOBIL) return renderTableroMovil(visibles, chips, chipsDerivacion);
+
+  const topRow = `
+    <div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:center;">
+      <div class="search-box">
+        ${iconSvg("search", 15)}
+        <input type="text" id="busqueda" placeholder="Buscar por folio, tema, residente…" value="${escapeAttr(state.busqueda)}" />
+      </div>
+      <div class="mode-toggle">
+        <button data-modo="kanban" class="${state.modoVista === "kanban" ? "active" : ""}">${iconSvg("layout-grid", 13)} Kanban</button>
+        <button data-modo="tabla" class="${state.modoVista === "tabla" ? "active" : ""}">${iconSvg("table", 13)} Tabla</button>
+      </div>
+    </div>
+    <div class="chips">${chips.join("")}</div>
+    <div class="chips-scroll" style="margin-bottom:14px;">${chipsDerivacion.join("")}</div>`;
+
+  if (state.modoVista === "tabla") return topRow + renderTabla(visibles);
+
+  const columns = state.ordenEstados.map((estado) => {
+    const items = visibles.filter((t) => t.estado === estado).sort((a, b) => {
+      const pr = PRIORIDAD_RANK[a.prioridad] - PRIORIDAD_RANK[b.prioridad];
+      if (pr !== 0) return pr;
+      return new Date(a.last_activity_at) - new Date(b.last_activity_at);
+    });
+    return `
+      <div class="board-col" draggable="true" data-col-estado="${estado}">
+        <div class="column-header" style="--col-color: ${ESTADO_COLORS[estado]}" title="Arrastra para reordenar esta columna">
+          <span class="dot"></span><h3>${estado}</h3><span class="column-count">${items.length}</span>
+        </div>
+        <div class="column-body" data-drop-estado="${estado}">
+          ${items.length === 0 ? `<div class="empty-col">Sin tickets</div>` : items.map(renderCard).join("")}
+        </div>
+      </div>`;
+  }).join("");
+
+  return topRow + `<div class="board">${columns}</div>`;
+}
+
+// ------------------------------------------------------------
+// Vista dedicada para celular: lista vertical de una sola columna,
+// con un filtro de estado en vez de columnas lado a lado.
+// ------------------------------------------------------------
+function renderTableroMovil(visibles, chipsBuzon, chipsDerivacion) {
+  const porEstado = state.estadoFiltroMovil === "todos"
+    ? visibles.filter((t) => t.estado !== "Resuelto" || state.soloAbiertos === false)
+    : visibles.filter((t) => t.estado === state.estadoFiltroMovil);
+
+  const ordenados = [...porEstado].sort((a, b) => {
+    const pr = PRIORIDAD_RANK[a.prioridad] - PRIORIDAD_RANK[b.prioridad];
+    if (pr !== 0) return pr;
+    return new Date(a.last_activity_at) - new Date(b.last_activity_at);
+  });
+
+  const chipsEstado = [`<button class="chip ${state.estadoFiltroMovil === "todos" ? "active" : ""}" style="--chip-color: var(--ink)" data-estado-movil="todos">Todos</button>`]
+    .concat(ESTADOS.map((e) => `<button class="chip ${state.estadoFiltroMovil === e ? "active" : ""}" style="--chip-color: ${ESTADO_COLORS[e]}" data-estado-movil="${e}">${e} (${visibles.filter((t) => t.estado === e).length})</button>`));
+
+  return `
+    <div class="search-box" style="margin-bottom:10px;">
+      ${iconSvg("search", 15)}
+      <input type="text" id="busqueda" placeholder="Buscar por folio, tema, residente…" value="${escapeAttr(state.busqueda)}" />
+    </div>
+    <div class="chips" style="margin-bottom:8px;">${chipsBuzon.join("")}</div>
+    <div class="chips-scroll" style="margin-bottom:8px;">${chipsEstado.join("")}</div>
+    <div class="chips-scroll">${chipsDerivacion.join("")}</div>
+    <div style="display:flex; flex-direction:column; gap:12px; margin-top:12px;">
+      ${ordenados.length === 0 ? `<div class="empty-col">Sin tickets en este filtro</div>` : ordenados.map(renderCard).join("")}
+    </div>`;
+}
+
+function renderTabla(visibles) {
+  const campos = {
+    folio: (t) => t.folio, tema: (t) => t.tema, buzon: (t) => t.buzon, prioridad: (t) => PRIORIDAD_RANK[t.prioridad],
+    estado: (t) => t.estado, derivacion: (t) => t.derivacion || "", solicitante: (t) => t.solicitante || "", dias: (t) => daysSince(t.last_activity_at),
+    fecha: (t) => t.created_at,
+  };
+  const dir = state.sortDir === "asc" ? 1 : -1;
+  const filas = [...visibles].sort((a, b) => {
+    const fa = campos[state.sortCampo](a), fb = campos[state.sortCampo](b);
+    if (fa < fb) return -1 * dir; if (fa > fb) return 1 * dir; return 0;
+  });
+  const th = (campo, label) => `<th data-sort="${campo}">${label}${state.sortCampo === campo ? `<span class="sort-arrow">${state.sortDir === "asc" ? "▲" : "▼"}</span>` : ""}</th>`;
+  const idsVisibles = filas.map((t) => t.id);
+  const todosMarcados = idsVisibles.length > 0 && idsVisibles.every((id) => state.seleccionados.has(id));
+  const seleccionActual = idsVisibles.filter((id) => state.seleccionados.has(id));
+
+  const barra = seleccionActual.length > 0 ? `
+    <div class="bulk-bar">
+      ${iconSvg("check-circle-2", 15)} ${seleccionActual.length} seleccionado${seleccionActual.length > 1 ? "s" : ""}
+      <select id="bulk-estado-select" style="max-width:190px;">
+        ${ESTADOS.map((e) => `<option value="${e}">${e}</option>`).join("")}
+      </select>
+      <button class="btn-ghost" id="btn-cambiar-estado-seleccion">${iconSvg("move", 13)} Mover a este estado</button>
+      <select id="bulk-derivacion-select" style="max-width:190px;">
+        <option value="">Sin derivar</option>
+        ${DERIVACIONES.map((d) => `<option value="${d}">→ ${d}</option>`).join("")}
+      </select>
+      <button class="btn-ghost" id="btn-cambiar-derivacion-seleccion">${iconSvg("move", 13)} Asignar derivación</button>
+      <button class="btn-ghost" id="btn-archivar-seleccion">${iconSvg("archive", 13)} Archivar seleccionados</button>
+      <button class="btn-ghost" id="btn-cancelar-seleccion" style="margin-left:auto;">Cancelar</button>
+    </div>` : "";
+
+  return barra + `
+    <div class="table-scroll">
+    <table class="ticket-table">
+      <thead><tr>
+        <th class="row-check"><input type="checkbox" id="check-todos" ${todosMarcados ? "checked" : ""} /></th>
+        ${th("folio", "Folio")}${th("fecha", "Llegada")}${th("tema", "Tema")}${th("buzon", "Buzón")}${th("prioridad", "Prioridad")}${th("estado", "Estado")}${th("derivacion", "Derivación")}${th("solicitante", "Solicitante")}${th("dias", "Días s/gestión")}<th></th>
+      </tr></thead>
+      <tbody>
+        ${filas.length === 0 ? `<tr><td colspan="11" class="muted" style="text-align:center; padding:24px;">Sin tickets</td></tr>` : filas.map((t) => {
+          const buzon = BUZONES.find((b) => b.id === t.buzon) || BUZONES[0];
+          const dias = daysSince(t.last_activity_at);
+          const urgente = t.estado !== "Resuelto" && dias >= 3;
+          return `
+          <tr class="row-clickable" data-open="${t.id}">
+            <td class="row-check"><input type="checkbox" class="check-fila" data-check="${t.id}" ${state.seleccionados.has(t.id) ? "checked" : ""} onclick="event.stopPropagation()" /></td>
+            <td class="mono">${t.folio}</td>
+            <td class="mono" style="font-size:12px; white-space:nowrap;">${fmtDate(t.created_at)}</td>
+            <td>${escapeHtml(t.tema)}</td>
+            <td><span class="badge" style="background: color-mix(in srgb, ${buzon.color} 14%, white); color: ${buzon.color}">${buzon.label}</span></td>
+            <td><span class="badge" style="background: color-mix(in srgb, ${PRIORIDAD_COLORS[t.prioridad]} 14%, white); color: ${PRIORIDAD_COLORS[t.prioridad]}; text-transform:capitalize;">${t.prioridad}</span></td>
+            <td><span class="badge" style="background: color-mix(in srgb, ${ESTADO_COLORS[t.estado]} 14%, white); color: ${ESTADO_COLORS[t.estado]}">${t.estado}</span></td>
+            <td>${t.derivacion ? `<span class="badge" style="background: color-mix(in srgb, ${DERIVACION_COLORS[t.derivacion]} 14%, white); color: ${DERIVACION_COLORS[t.derivacion]}">→ ${t.derivacion}</span>` : `<span class="muted" style="font-size:12px;">—</span>`}</td>
+            <td>${escapeHtml(t.solicitante || "")}</td>
+            <td class="${urgente ? "urgent" : ""}">${dias === 0 ? "hoy" : dias + " d"}</td>
+            <td><button class="icon-btn" data-archive="${t.id}" aria-label="Archivar ticket" onclick="event.stopPropagation()">${iconSvg("archive", 15)}</button></td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+    </div>`;
+}
+
+function renderCard(t) {
+  const buzon = BUZONES.find((b) => b.id === t.buzon) || BUZONES[0];
+  const dias = daysSince(t.last_activity_at);
+  const urgente = t.estado !== "Resuelto" && dias >= 3;
+  return `
+    <div class="card" style="--buzon-color: ${buzon.color}; --estado-color: ${ESTADO_COLORS[t.estado]}" data-open="${t.id}" draggable="true" data-drag-ticket="${t.id}">
+      <div class="card-top">
+        <span class="card-id mono">${t.folio} · ${fmtDate(t.created_at)}</span>
+        <button class="icon-btn" data-archive="${t.id}" aria-label="Archivar ticket" onclick="event.stopPropagation()">${iconSvg("archive", 15)}</button>
+      </div>
+      <div class="card-title">${escapeHtml(t.tema)}</div>
+      <div class="card-summary">${escapeHtml(t.resumen || "")}</div>
+      <div class="badges">
+        <span class="badge" style="background: color-mix(in srgb, ${buzon.color} 14%, white); color: ${buzon.color}">${iconSvg(buzon.icon, 11)} ${buzon.label}</span>
+        <span class="badge" style="background: color-mix(in srgb, ${PRIORIDAD_COLORS[t.prioridad]} 14%, white); color: ${PRIORIDAD_COLORS[t.prioridad]}; text-transform: capitalize;">${t.prioridad}</span>
+        <span class="badge" style="background:#F1F1EE; color: var(--muted);">${escapeHtml(t.categoria)}</span>
+        ${t.derivacion ? `<span class="badge" style="background: color-mix(in srgb, ${DERIVACION_COLORS[t.derivacion]} 16%, white); color: ${DERIVACION_COLORS[t.derivacion]}; font-weight:800;">${iconSvg("move", 10)} ${t.derivacion}</span>` : ""}
+        ${t.needs_review ? `<span class="badge" style="background:#FBEAEA; color: var(--alta);">Revisar</span>` : ""}
+      </div>
+      <div class="card-footer">
+        <span>${escapeHtml(t.solicitante || "")}</span>
+        <span class="${urgente ? "urgent" : ""}">${urgente ? iconSvg("alert-triangle", 12) : ""} ${dias === 0 ? "hoy" : dias + " d sin gestión"}</span>
+      </div>
+      <select class="estado-select" style="--estado-color: ${ESTADO_COLORS[t.estado]}" data-estado-de="${t.id}" onclick="event.stopPropagation()">
+        ${ESTADOS.map((e) => `<option value="${e}" ${e === t.estado ? "selected" : ""}>${e}</option>`).join("")}
+      </select>
+      <select class="estado-select" style="--estado-color: ${t.derivacion ? DERIVACION_COLORS[t.derivacion] : "var(--muted)"}; margin-top:6px;" data-derivacion-de="${t.id}" onclick="event.stopPropagation()">
+        <option value="" ${!t.derivacion ? "selected" : ""}>Sin derivar</option>
+        ${DERIVACIONES.map((d) => `<option value="${d}" ${d === t.derivacion ? "selected" : ""}>→ ${d}</option>`).join("")}
+      </select>
+    </div>`;
+}
+
+function renderArchivados() {
+  if (!state.archivadosCargados) {
+    return `<div class="loading-chip">${iconSvg("loader-2", 14, "spin")} Cargando archivados…</div>`;
+  }
+  if (state.archivados.length === 0) {
+    return `<div class="panel" style="text-align:center; color:var(--muted);">${iconSvg("archive", 22)}<p style="margin-top:8px;">No hay tickets archivados.</p></div>`;
+  }
+  const idsVisibles = state.archivados.map((t) => t.id);
+  const todosMarcados = idsVisibles.length > 0 && idsVisibles.every((id) => state.seleccionados.has(id));
+  const seleccionActual = idsVisibles.filter((id) => state.seleccionados.has(id));
+
+  const barra = seleccionActual.length > 0 ? `
+    <div class="bulk-bar">
+      ${iconSvg("check-circle-2", 15)} ${seleccionActual.length} seleccionado${seleccionActual.length > 1 ? "s" : ""}
+      <button class="btn-ghost" id="btn-restaurar-seleccion">${iconSvg("rotate-ccw", 13)} Restaurar seleccionados</button>
+      <button class="btn-ghost" style="color:var(--alta); border-color:var(--alta);" id="btn-eliminar-seleccion">${iconSvg("x", 13)} Eliminar definitivamente</button>
+      <button class="btn-ghost" id="btn-cancelar-seleccion" style="margin-left:auto;">Cancelar</button>
+    </div>` : "";
+
+  if (ES_MOBIL) {
+    return barra + `
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        ${state.archivados.map((t) => {
+          const buzon = BUZONES.find((b) => b.id === t.buzon) || BUZONES[0];
+          return `
+          <div class="card" style="--buzon-color:${buzon.color}; --estado-color:var(--line);" data-open="${t.id}">
+            <div class="card-top">
+              <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" class="check-fila" data-check="${t.id}" ${state.seleccionados.has(t.id) ? "checked" : ""} onclick="event.stopPropagation()" /><span class="card-id mono">${t.folio}</span></label>
+            </div>
+            <div class="card-title">${escapeHtml(t.tema)}</div>
+            <div class="badges">
+              <span class="badge" style="background: color-mix(in srgb, ${buzon.color} 14%, white); color: ${buzon.color}">${buzon.label}</span>
+              <span class="badge" style="background:#F1F1EE; color: var(--muted);">${escapeHtml(t.categoria)}</span>
+            </div>
+            <div class="card-footer"><span>${escapeHtml(t.solicitante || "")}</span></div>
+            <div style="display:flex; gap:8px; margin-top:10px;">
+              <button class="btn-ghost" data-restaurar="${t.id}" onclick="event.stopPropagation()" style="flex:1;">${iconSvg("rotate-ccw", 13)} Restaurar</button>
+              <button class="btn-ghost" style="color:var(--alta); border-color:var(--alta); flex:1;" data-eliminar-def="${t.id}" onclick="event.stopPropagation()">${iconSvg("x", 13)} Eliminar</button>
+            </div>
+          </div>`;
+        }).join("")}
+      </div>`;
+  }
+
+  return barra + `
+    <div class="table-scroll">
+    <table class="ticket-table">
+      <thead><tr>
+        <th class="row-check"><input type="checkbox" id="check-todos" ${todosMarcados ? "checked" : ""} /></th>
+        <th>Folio</th><th>Tema</th><th>Buzón</th><th>Categoría</th><th>Solicitante</th><th></th>
+      </tr></thead>
+      <tbody>
+        ${state.archivados.map((t) => {
+          const buzon = BUZONES.find((b) => b.id === t.buzon) || BUZONES[0];
+          return `
+          <tr class="row-clickable" data-open="${t.id}">
+            <td class="row-check"><input type="checkbox" class="check-fila" data-check="${t.id}" ${state.seleccionados.has(t.id) ? "checked" : ""} onclick="event.stopPropagation()" /></td>
+            <td class="mono">${t.folio}</td>
+            <td>${escapeHtml(t.tema)}</td>
+            <td><span class="badge" style="background: color-mix(in srgb, ${buzon.color} 14%, white); color: ${buzon.color}">${buzon.label}</span></td>
+            <td>${escapeHtml(t.categoria)}</td>
+            <td>${escapeHtml(t.solicitante || "")}</td>
+            <td>
+              <button class="btn-ghost" data-restaurar="${t.id}" onclick="event.stopPropagation()">${iconSvg("rotate-ccw", 13)} Restaurar</button>
+              <button class="btn-ghost" style="color:var(--alta); border-color:var(--alta);" data-eliminar-def="${t.id}" onclick="event.stopPropagation()">${iconSvg("x", 13)} Eliminar</button>
+            </td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+    </div>`;
+}
+
+const SEM_COLOR_VAR = { rojo: "var(--sem-rojo)", amarillo: "var(--sem-amarillo)", verde: "var(--sem-verde)" };
+
+function calcularSemaforo(tickets) {
+  if (tickets.length === 0) return "verde";
+  const hayAlta = tickets.some((t) => t.prioridad === "alta");
+  const hayAtrasado = tickets.some((t) => daysSince(t.last_activity_at) >= 3);
+  if (hayAlta || hayAtrasado) return "rojo";
+  return "amarillo";
+}
+
+const TOPE_MENSUAL_REFERENCIA = 10; // ajusta este número para que coincida con el tope que definiste en Anthropic
+
+function renderComposerModal() {
+  return `
+    <div class="overlay" id="overlay-composer">
+      <div class="modal relative" style="max-width:480px;">
+        ${state.procesandoNuevo ? `<div class="loading-overlay"><div class="loading-chip">${iconSvg("loader-2", 14, "spin")} Leyendo correo…</div></div>` : ""}
+        <div class="modal-header">
+          <h3 style="font-size:16px;">${iconSvg("message-square-plus", 17)} Nuevo ticket</h3>
+          <button class="icon-btn" id="cerrar-composer" aria-label="Cerrar">${iconSvg("x", 20)}</button>
+        </div>
+        <div class="modal-scroll">
+          <p class="hint" style="margin-top:0;">Pega el correo y/o adjunta el comprobante si viene como imagen.</p>
+          <textarea id="texto-nuevo" rows="8" placeholder="De: ...&#10;Para: gastoscomunes@jdvm.cl&#10;Asunto: ...&#10;&#10;Pega aquí el cuerpo del correo"></textarea>
+          <label class="file-drop">
+            ${iconSvg("image", 15)} <span id="nombre-imagen-nueva">${state.imagenNueva ? state.imagenNueva.name : "Adjuntar comprobante (imagen)"}</span>
+            <input type="file" id="imagen-nueva" accept="image/*" />
+          </label>
+          <label class="field-label">Buzón de origen</label>
+          <select id="buzon-nuevo">
+            <option value="auto">Detectar automáticamente</option>
+            ${BUZONES.map((b) => `<option value="${b.id}">${b.label}</option>`).join("")}
+          </select>
+          <button class="btn-primary" id="btn-crear" ${state.procesandoNuevo ? "disabled" : ""}>
+            ${iconSvg("sparkles", 16)} Procesar con IA
+          </button>
+          ${state.error ? `<p class="error-text">${state.error}</p>` : ""}
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderLeyenda() {
+  return `
+    <div class="overlay" id="overlay-leyenda">
+      <div class="modal" style="max-width:420px;">
+        <div class="modal-header">
+          <h3 style="font-size:16px;">Leyenda de colores</h3>
+          <button class="icon-btn" id="cerrar-leyenda" aria-label="Cerrar">${iconSvg("x", 20)}</button>
+        </div>
+        <div class="modal-scroll">
+          <h4 style="font-size:12.5px; color:var(--muted); text-transform:uppercase; margin-bottom:8px;">Estado (progreso del ticket)</h4>
+          ${ESTADOS.map((e) => `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13.5px;"><span style="width:12px; height:12px; border-radius:999px; background:${ESTADO_COLORS[e]};"></span>${e}</div>`).join("")}
+
+          <h4 style="font-size:12.5px; color:var(--muted); text-transform:uppercase; margin:16px 0 8px;">Derivación (a quién se deriva)</h4>
+          ${DERIVACIONES.map((d) => `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13.5px;"><span style="width:12px; height:12px; border-radius:999px; background:${DERIVACION_COLORS[d]};"></span>${d}</div>`).join("")}
+
+          <h4 style="font-size:12.5px; color:var(--muted); text-transform:uppercase; margin:16px 0 8px;">Buzón</h4>
+          ${BUZONES.map((b) => `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13.5px;"><span style="width:12px; height:12px; border-radius:999px; background:${b.color};"></span>${b.label}</div>`).join("")}
+
+          <h4 style="font-size:12.5px; color:var(--muted); text-transform:uppercase; margin:16px 0 8px;">Prioridad</h4>
+          ${["alta", "media", "baja"].map((p) => `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13.5px; text-transform:capitalize;"><span style="width:12px; height:12px; border-radius:999px; background:${PRIORIDAD_COLORS[p]};"></span>${p}</div>`).join("")}
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderInicio() {
+  const abiertos = state.tickets.filter((t) => t.estado !== "Resuelto");
+  const semGeneral = calcularSemaforo(abiertos);
+  const altaCount = abiertos.filter((t) => t.prioridad === "alta").length;
+  const atrasadosCount = abiertos.filter((t) => daysSince(t.last_activity_at) >= 3).length;
+
+  const mensajes = {
+    rojo: `Hay ${altaCount} ticket${altaCount !== 1 ? "s" : ""} de prioridad alta y/o ${atrasadosCount} sin gestión hace 3+ días. Revisa el tablero antes de seguir.`,
+    amarillo: `${abiertos.length} ticket${abiertos.length !== 1 ? "s" : ""} abierto${abiertos.length !== 1 ? "s" : ""}, ninguno urgente ni atrasado por ahora.`,
+    verde: `Todo al día — no hay tickets pendientes.`,
+  };
+  const titulos = { rojo: "Atención necesaria hoy", amarillo: "Bajo control", verde: "Todo tranquilo" };
+
+  const porCategoria = {};
+  abiertos.forEach((t) => { (porCategoria[t.categoria] = porCategoria[t.categoria] || []).push(t); });
+  const ranking = Object.entries(porCategoria)
+    .map(([cat, arr]) => ({ cat, count: arr.length, sem: calcularSemaforo(arr) }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  const gasto = state.gastoIA;
+  const gastoPct = gasto ? Math.min(100, (gasto.total_usd / TOPE_MENSUAL_REFERENCIA) * 100) : 0;
+  const gastoColor = gastoPct >= 90 ? "var(--sem-rojo)" : gastoPct >= 70 ? "var(--sem-amarillo)" : "var(--sem-verde)";
+
+  return `
+    <div class="semaforo-grande" style="--sem-color: ${SEM_COLOR_VAR[semGeneral]}">
+      <div class="semaforo-luz"></div>
+      <div>
+        <div class="semaforo-titulo">${titulos[semGeneral]}</div>
+        <div class="semaforo-sub">${mensajes[semGeneral]}</div>
+      </div>
+    </div>
+
+    ${gasto ? `
+    <div class="panel" style="margin-bottom:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <h4 style="font-size:13.5px;">${iconSvg("sparkles", 14)} Gasto de IA este mes</h4>
+        <span style="font-size:13px; font-weight:700; color:${gastoColor}">$${gasto.total_usd.toFixed(2)} <span class="muted" style="font-weight:400;">de ~$${TOPE_MENSUAL_REFERENCIA.toFixed(2)} de referencia</span></span>
+      </div>
+      <div style="background:#EEEEE9; border-radius:999px; height:8px; overflow:hidden;">
+        <div style="background:${gastoColor}; height:100%; width:${gastoPct}%; border-radius:999px;"></div>
+      </div>
+      <p class="muted" style="font-size:11.5px; margin-top:6px;">${gasto.llamadas} llamadas a la IA este mes · el tope real se controla en console.anthropic.com</p>
+    </div>` : ""}
+
+    <h3 style="font-size:14px; margin-bottom:10px;">Qué está pidiendo más atención</h3>
+    ${ranking.length === 0 ? `<p class="muted" style="font-size:13px;">No hay tickets abiertos por categoría todavía.</p>` : ranking.map((r) => `
+      <div class="ranking-cat" style="--sem-color: ${SEM_COLOR_VAR[r.sem]}">
+        <span class="ranking-luz"></span>
+        <span class="ranking-nombre">${escapeHtml(r.cat)}</span>
+        <span class="ranking-count">${r.count} ticket${r.count !== 1 ? "s" : ""} abierto${r.count !== 1 ? "s" : ""}</span>
+      </div>`).join("")}`;
+}
+
+function renderEstadisticas() {
+  const abiertos = state.tickets.filter((t) => t.estado !== "Resuelto");
+  const resueltos = state.tickets.filter((t) => t.estado === "Resuelto");
+  const promedio = resueltos.length ? Math.round(resueltos.reduce((acc, t) => acc + (new Date(t.last_activity_at) - new Date(t.created_at)) / 86400000, 0) / resueltos.length) : "—";
+  const altaAbiertos = abiertos.filter((t) => t.prioridad === "alta").length;
+
+  // Categorías más atrasadas (promedio de días sin gestión entre los tickets abiertos de cada una)
+  const porCategoriaAbiertos = {};
+  abiertos.forEach((t) => { (porCategoriaAbiertos[t.categoria] = porCategoriaAbiertos[t.categoria] || []).push(t); });
+  const atrasoPorCategoria = Object.entries(porCategoriaAbiertos)
+    .map(([cat, arr]) => ({ cat, count: arr.length, promedioDias: Math.round(arr.reduce((acc, t) => acc + daysSince(t.last_activity_at), 0) / arr.length) }))
+    .sort((a, b) => b.promedioDias - a.promedioDias)
+    .slice(0, 5);
+
+  // Residentes recurrentes (3+ tickets), pueden señalar un problema de fondo no resuelto
+  const porSolicitante = {};
+  state.tickets.forEach((t) => {
+    const nombre = (t.solicitante || "").trim();
+    if (!nombre || nombre.toLowerCase() === "no identificado") return;
+    (porSolicitante[nombre] = porSolicitante[nombre] || []).push(t);
+  });
+  const recurrentes = Object.entries(porSolicitante)
+    .filter(([, arr]) => arr.length >= 3)
+    .map(([nombre, arr]) => ({ nombre, count: arr.length, abiertos: arr.filter((t) => t.estado !== "Resuelto").length }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  return `
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-value">${state.tickets.length}</div><div class="stat-label">Total tickets</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--alta)">${altaAbiertos}</div><div class="stat-label">Urgentes abiertos</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--resuelto)">${resueltos.length}</div><div class="stat-label">Resueltos</div></div>
+      <div class="stat-card"><div class="stat-value">${promedio}</div><div class="stat-label">Días prom. resolución</div></div>
+    </div>
+
+    <div class="panel">
+      <h3 style="font-size:15px; margin-bottom:14px;">Tipos de solicitud más frecuentes</h3>
+      <div style="position:relative; height:280px;"><canvas id="grafico-categorias"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <h3 style="font-size:15px; margin-bottom:4px;">Derivación más frecuente</h3>
+      <p class="muted" style="font-size:12.5px; margin-bottom:14px;">Solo tickets con una derivación asignada</p>
+      <div style="position:relative; height:220px;"><canvas id="grafico-derivacion"></canvas></div>
+    </div>
+
+    ${atrasoPorCategoria.length > 0 ? `
+    <div class="panel">
+      <h3 style="font-size:15px; margin-bottom:4px;">${iconSvg("alert-triangle", 15)} Dónde se está estancando más</h3>
+      <p class="muted" style="font-size:12.5px; margin-bottom:12px;">Categorías con más días promedio sin gestión (entre tickets abiertos)</p>
+      ${atrasoPorCategoria.map((c) => `
+        <div class="ranking-cat" style="--sem-color: ${c.promedioDias >= 3 ? "var(--sem-rojo)" : "var(--sem-amarillo)"}">
+          <span class="ranking-luz"></span>
+          <span class="ranking-nombre">${escapeHtml(c.cat)}</span>
+          <span class="ranking-count">${c.count} abierto${c.count !== 1 ? "s" : ""} · ${c.promedioDias} d promedio</span>
+        </div>`).join("")}
+    </div>` : ""}
+
+    ${recurrentes.length > 0 ? `
+    <div class="panel">
+      <h3 style="font-size:15px; margin-bottom:4px;">${iconSvg("repeat", 15)} Residentes con casos recurrentes</h3>
+      <p class="muted" style="font-size:12.5px; margin-bottom:12px;">3 o más tickets — puede indicar un problema de fondo sin resolver</p>
+      ${recurrentes.map((r) => `
+        <div class="ranking-cat" style="--sem-color: ${r.abiertos > 0 ? "var(--sem-amarillo)" : "var(--sem-verde)"}">
+          <span class="ranking-luz"></span>
+          <span class="ranking-nombre">${escapeHtml(r.nombre)}</span>
+          <span class="ranking-count">${r.count} tickets · ${r.abiertos} abierto${r.abiertos !== 1 ? "s" : ""}</span>
+        </div>`).join("")}
+    </div>` : ""}
+
+    <div class="grid-2">
+      ${BUZONES.map((b) => {
+        const items = state.tickets.filter((t) => t.buzon === b.id);
+        return `<div class="panel"><h4 style="font-size:14px; color:${b.color}; margin-bottom:6px;">${b.label}</h4><p class="muted" style="font-size:13px;">${items.length} tickets totales · ${items.filter((t) => t.estado !== "Resuelto").length} abiertos</p></div>`;
+      }).join("")}
+    </div>`;
+}
+
+function drawChart() {
+  const ctx = document.getElementById("grafico-categorias");
+  if (ctx) {
+    const counts = CATEGORIAS.map((c) => state.tickets.filter((t) => t.categoria === c).length);
+    const labels = CATEGORIAS.filter((_, i) => counts[i] > 0);
+    const data = counts.filter((c) => c > 0);
+    if (state.chartInstance) state.chartInstance.destroy();
+    state.chartInstance = new Chart(ctx, {
+      type: "bar",
+      data: { labels, datasets: [{ data, backgroundColor: "#2C5F63", borderRadius: 6 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        indexAxis: "y",
+        scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+      },
+    });
+  }
+
+  const ctxDer = document.getElementById("grafico-derivacion");
+  if (ctxDer) {
+    const countsDer = DERIVACIONES.map((d) => state.tickets.filter((t) => t.derivacion === d).length);
+    const labelsDer = DERIVACIONES.filter((_, i) => countsDer[i] > 0);
+    const dataDer = countsDer.filter((c) => c > 0);
+    const coloresDer = DERIVACIONES.filter((_, i) => countsDer[i] > 0).map((d) => DERIVACION_COLORS[d].replace("var(--", "").replace(")", ""));
+    if (state.chartDerivacionInstance) state.chartDerivacionInstance.destroy();
+    if (dataDer.length === 0) return;
+    state.chartDerivacionInstance = new Chart(ctxDer, {
+      type: "bar",
+      data: { labels: labelsDer, datasets: [{ data: dataDer, backgroundColor: labelsDer.map((d) => DERIVACION_COLORS[d]), borderRadius: 6 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        indexAxis: "y",
+        scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+      },
+    });
+  }
+}
+
+function renderModal() {
+  const t = state.tickets.find((x) => x.id === state.detalleId) || state.archivados.find((x) => x.id === state.detalleId);
+  if (!t) return "";
+  const hist = historialDe(t.id);
+  const tab = state.modalTab;
+
+  const tabDatos = `
+        <label class="field-label">Tema</label>
+        <input type="text" id="edit-tema" value="${escapeAttr(t.tema)}" />
+        <label class="field-label">Resumen</label>
+        <textarea id="edit-resumen" rows="2">${escapeHtml(t.resumen || "")}</textarea>
+        <div class="grid-2" style="margin-top:12px;">
+          <div>
+            <label class="field-label">Buzón</label>
+            <select id="edit-buzon">${BUZONES.map((b) => `<option value="${b.id}" ${b.id === t.buzon ? "selected" : ""}>${b.label}</option>`).join("")}</select>
+          </div>
+          <div>
+            <label class="field-label">Prioridad</label>
+            <select id="edit-prioridad">
+              <option value="alta" ${t.prioridad === "alta" ? "selected" : ""}>Alta</option>
+              <option value="media" ${t.prioridad === "media" ? "selected" : ""}>Media</option>
+              <option value="baja" ${t.prioridad === "baja" ? "selected" : ""}>Baja</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label">Categoría</label>
+            <select id="edit-categoria">${CATEGORIAS.map((c) => `<option value="${c}" ${c === t.categoria ? "selected" : ""}>${c}</option>`).join("")}</select>
+          </div>
+          <div>
+            <label class="field-label">Solicitante</label>
+            <input type="text" id="edit-solicitante" value="${escapeAttr(t.solicitante || "")}" />
+          </div>
+          <div>
+            <label class="field-label">Estado</label>
+            <select id="edit-estado" style="border-color: ${ESTADO_COLORS[t.estado]}; color: ${ESTADO_COLORS[t.estado]}; font-weight:700;">
+              ${ESTADOS.map((e) => `<option value="${e}" ${e === t.estado ? "selected" : ""}>${e}</option>`).join("")}
+            </select>
+          </div>
+          <div>
+            <label class="field-label">Derivación</label>
+            <select id="edit-derivacion" style="border-color: ${t.derivacion ? DERIVACION_COLORS[t.derivacion] : "var(--line)"}; color: ${t.derivacion ? DERIVACION_COLORS[t.derivacion] : "var(--ink)"}; font-weight:700;">
+              <option value="" ${!t.derivacion ? "selected" : ""}>Sin derivar</option>
+              ${DERIVACIONES.map((d) => `<option value="${d}" ${d === t.derivacion ? "selected" : ""}>→ ${d}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;">
+          <button class="btn-ghost" id="btn-guardar-datos">Guardar datos</button>
+          ${t.archivado
+            ? `<button class="btn-ghost" id="btn-restaurar-desde-modal">${iconSvg("rotate-ccw", 13)} Restaurar este ticket</button>`
+            : `<button class="btn-ghost" style="color:var(--alta); border-color:var(--alta);" id="btn-archivar-desde-modal">${iconSvg("archive", 13)} Archivar este ticket</button>`}
+          <button class="btn-ghost" style="color:var(--alta); border-color:var(--alta);" id="btn-eliminar-desde-modal">${iconSvg("x", 13)} Eliminar definitivamente</button>
+        </div>
+        ${t.transferencia ? `
+        <div class="transfer-box" style="margin-top:18px;">
+          <p class="sparkle-label">${iconSvg("landmark", 13)} Datos de transferencia detectados</p>
+          <p>Monto: ${t.transferencia.monto || "—"} · Fecha: ${t.transferencia.fecha || "—"}</p>
+          <p>Banco: ${t.transferencia.banco_origen || "—"} · Titular: ${t.transferencia.titular || "—"}</p>
+          <p>Referencia: ${t.transferencia.referencia_u_operacion || "—"}</p>
+        </div>` : ""}
+        ${t.estado !== "Resuelto" ? `
+        <div style="margin-top:18px; padding-top:16px; border-top:1px solid var(--line);">
+          <h4 style="font-size:14px; margin-bottom:8px; color:var(--resuelto);">${iconSvg("check-circle-2", 15)} Marcar como Resuelto</h4>
+          <textarea id="texto-cierre" rows="2" placeholder="¿Qué se hizo o qué se le respondió? (opcional, queda en el historial)"></textarea>
+          <button class="btn-primary" id="btn-marcar-resuelto" style="width:auto; margin-top:8px; background: linear-gradient(135deg, var(--resuelto), #0e7a30);">${iconSvg("check-circle-2", 14)} Marcar como Resuelto</button>
+        </div>` : ""}`;
+
+  const tabHistorial = `
+        <div class="history-box" style="max-height:400px;">
+          ${hist.length === 0 ? `<p class="muted" style="font-size:12.5px;">Sin movimientos aún.</p>` : hist.map((h) => `
+            <div class="history-entry">
+              <div class="h-meta">${fmtDate(h.created_at)} · ${h.tipo}</div>
+              ${renderHistorialEntry(h)}
+            </div>`).join("")}
+        </div>`;
+
+  const tabResponder = `
+        <h4 style="font-size:14px; margin-bottom:8px;">${iconSvg("message-square-plus", 15)} Agregar seguimiento</h4>
+        <textarea id="texto-seguimiento" rows="3" placeholder="Ej: se reitera correo, respuesta del residente, llamado telefónico…"></textarea>
+        <label class="file-drop">
+          ${iconSvg("paperclip", 14)} <span id="nombre-imagen-seg">Adjuntar nueva imagen (opcional)</span>
+          <input type="file" id="imagen-seguimiento" accept="image/*" />
+        </label>
+        <div style="display:flex; gap:8px; margin:10px 0 18px; flex-wrap:wrap;">
+          <button class="btn-ghost" id="btn-agregar-nota">Agregar como nota</button>
+          <button class="btn-primary" id="btn-reprocesar" style="width:auto; margin-top:0;">${iconSvg("sparkles", 14)} Reprocesar con IA</button>
+        </div>
+
+        <h4 style="font-size:14px; margin-bottom:8px;">${iconSvg("sparkles", 15)} Sugerencia de respuesta</h4>
+        <button class="btn-ghost" id="btn-sugerir">${iconSvg("sparkles", 13)} Generar sugerencia</button>
+        <div id="zona-sugerencia" style="margin-top:10px;"></div>
+
+        <h4 style="font-size:14px; margin:18px 0 8px;">${iconSvg("file-text", 15)} Plantillas de respuesta (sin IA)</h4>
+        ${state.plantillas.length === 0 ? `<p class="muted" style="font-size:12.5px;">Sin plantillas guardadas todavía.</p>` : `
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <select id="select-plantilla" style="max-width:260px;">
+            <option value="">Elige una plantilla…</option>
+            ${state.plantillas.map((p) => `<option value="${p.id}">${escapeHtml(p.nombre)}</option>`).join("")}
+          </select>
+          <button class="btn-ghost" id="btn-usar-plantilla">Usar</button>
+        </div>`}
+        <div id="zona-plantilla-usada" style="margin-top:10px;"></div>
+        <details style="margin-top:10px;">
+          <summary style="cursor:pointer; font-size:12.5px; color:var(--accent); font-weight:600;">Gestionar plantillas</summary>
+          <div style="margin-top:8px;">
+            ${state.plantillas.map((p) => `
+              <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--line); font-size:13px;">
+                <span>${escapeHtml(p.nombre)}</span>
+                <button class="icon-btn" data-eliminar-plantilla="${p.id}" aria-label="Eliminar plantilla">${iconSvg("trash-2", 14)}</button>
+              </div>`).join("")}
+            <label class="field-label" style="margin-top:10px;">Nombre</label>
+            <input type="text" id="nueva-plantilla-nombre" placeholder="Ej: Cómo pagar el gasto común" />
+            <label class="field-label">Texto</label>
+            <textarea id="nueva-plantilla-texto" rows="3" placeholder="Texto de la respuesta…"></textarea>
+            <button class="btn-ghost" id="btn-crear-plantilla" style="margin-top:8px;">${iconSvg("plus", 13)} Guardar plantilla nueva</button>
+          </div>
+        </details>
+
+        <h4 style="font-size:14px; margin:18px 0 8px;">${iconSvg("check-circle-2", 15)} Confirmar respuesta final enviada</h4>
+        <p class="muted" style="font-size:12.5px; margin-bottom:8px;">Si editaste el borrador antes de enviarlo desde Outlook, pega aquí el texto final real — así el historial queda fiel a lo que realmente se le dijo al residente.</p>
+        <textarea id="texto-respuesta-final" rows="3" placeholder="Pega aquí el texto final que enviaste…"></textarea>
+        <button class="btn-ghost" id="btn-confirmar-final" style="margin-top:8px;">${iconSvg("check-circle-2", 13)} Guardar como respuesta final</button>`;
+
+  return `
+    <div class="overlay" id="overlay">
+      <div class="modal">
+        <div class="modal-header">
+          <h3 style="font-size:16px;">${t.folio} · <span style="color:${ESTADO_COLORS[t.estado]}">${t.estado}</span> <span class="muted" style="font-weight:400; font-size:13px;">· ${fmtDate(t.created_at)}</span></h3>
+          <div style="display:flex; align-items:center; gap:4px;">
+            <button class="icon-btn" id="ticket-anterior" aria-label="Ticket anterior" title="Anterior">${iconSvg("chevron-left", 20)}</button>
+            <button class="icon-btn" id="ticket-siguiente" aria-label="Siguiente ticket" title="Siguiente">${iconSvg("chevron-right", 20)}</button>
+            <button class="icon-btn" id="cerrar-modal" aria-label="Cerrar" style="margin-left:6px;">${iconSvg("x", 22)}</button>
+          </div>
+        </div>
+        <div class="tabs-row tabs-row-sticky">
+          <button class="tab-btn ${tab === "datos" ? "active" : ""}" data-tab="datos">Datos</button>
+          <button class="tab-btn ${tab === "historial" ? "active" : ""}" data-tab="historial">Historial (${hist.length})</button>
+          <button class="tab-btn ${tab === "responder" ? "active" : ""}" data-tab="responder">Responder</button>
+        </div>
+        <div class="modal-scroll">
+          ${tab === "datos" ? tabDatos : tab === "historial" ? tabHistorial : tabResponder}
+        </div>
+      </div>
+    </div>`;
+}
+
+function escapeHtml(s) { return (s || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+function escapeAttr(s) { return escapeHtml(s).replace(/"/g, "&quot;"); }
+
+// ------------------------------------------------------------
+// Eventos
+// ------------------------------------------------------------
+function attachEvents() {
+  document.querySelectorAll("[data-vista]").forEach((b) => b.onclick = () => { state.vista = b.dataset.vista; render(); });
+  document.querySelectorAll("[data-buzon]").forEach((b) => b.onclick = () => { state.filtroBuzon = b.dataset.buzon; render(); });
+  document.querySelectorAll("[data-estado-movil]").forEach((b) => b.onclick = () => { state.estadoFiltroMovil = b.dataset.estadoMovil; render(); });
+  document.querySelectorAll("[data-derivacion-filtro]").forEach((b) => b.onclick = () => { state.filtroDerivacion = b.dataset.derivacionFiltro; render(); });
+  document.querySelectorAll("[data-open]").forEach((c) => c.onclick = () => { state.detalleId = Number(c.dataset.open); state.modalTab = "datos"; render(); });
+  document.querySelectorAll("[data-modo]").forEach((b) => b.onclick = () => { state.modoVista = b.dataset.modo; render(); });
+  document.querySelectorAll("[data-sort]").forEach((th) => th.onclick = () => {
+    if (state.sortCampo === th.dataset.sort) state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
+    else { state.sortCampo = th.dataset.sort; state.sortDir = "asc"; }
+    render();
+  });
+
+  const badgeUrgentes = document.getElementById("badge-urgentes");
+  if (badgeUrgentes) badgeUrgentes.onclick = () => { state.soloUrgentes = !state.soloUrgentes; state.vista = "tablero"; render(); };
+
+  const btnLeyenda = document.getElementById("btn-leyenda");
+  if (btnLeyenda) btnLeyenda.onclick = () => { state.mostrarLeyenda = true; render(); };
+  const cerrarLeyenda = document.getElementById("cerrar-leyenda");
+  if (cerrarLeyenda) cerrarLeyenda.onclick = () => { state.mostrarLeyenda = false; render(); };
+  const overlayLeyenda = document.getElementById("overlay-leyenda");
+  if (overlayLeyenda) overlayLeyenda.onclick = (e) => { if (e.target.id === "overlay-leyenda") { state.mostrarLeyenda = false; render(); } };
+
+  const btnLogout = document.getElementById("btn-logout");
+  if (btnLogout) btnLogout.onclick = () => { if (confirm("¿Cerrar sesión?")) cerrarSesion(); };
+
+  const busqueda = document.getElementById("busqueda");
+  if (busqueda) {
+    busqueda.oninput = () => { state.busqueda = busqueda.value; render(); };
+    // mantener foco tras re-render mientras se escribe
+    busqueda.focus();
+    busqueda.selectionStart = busqueda.selectionEnd = busqueda.value.length;
+  }
+
+  const toggleResueltos = document.getElementById("toggle-resueltos");
+  if (toggleResueltos) toggleResueltos.onclick = () => { state.soloAbiertos = !state.soloAbiertos; cargarTodo(); };
+
+  const toggleLectura = document.getElementById("toggle-lectura");
+  if (toggleLectura) toggleLectura.onclick = () => {
+    const confirmMsg = state.lecturaActiva
+      ? "¿Pausar la lectura automática de correos? Puedes reanudarla cuando quieras."
+      : "¿Reanudar la lectura automática de correos (solo buzón de contacto)?";
+    if (confirm(confirmMsg)) alternarLectura();
+  };
+
+  document.querySelectorAll("[data-archive]").forEach((b) => b.onclick = async () => {
+    if (!confirm("¿Archivar este ticket? Se quita del tablero pero su historial no se pierde.")) return;
+    try {
+      await api("archivar_ticket", { id: Number(b.dataset.archive) });
+      showToast("Ticket archivado");
+      state.archivadosCargados = false;
+      cargarTodo();
+    } catch (e) { showToast("No se pudo archivar", "error"); }
+  });
+
+  document.querySelectorAll("[data-restaurar]").forEach((b) => b.onclick = async () => {
+    try {
+      await api("actualizar_ticket", { id: Number(b.dataset.restaurar), patch: { archivado: false } });
+      showToast("Ticket restaurado");
+      state.archivadosCargados = false;
+      await cargarArchivados();
+      cargarTodo();
+    } catch (e) { showToast("No se pudo restaurar", "error"); }
+  });
+
+  document.querySelectorAll("[data-eliminar-def]").forEach((b) => b.onclick = async () => {
+    if (!confirm("¿Eliminar este ticket definitivamente? Esta acción NO se puede deshacer, se pierde todo su historial.")) return;
+    try {
+      await api("eliminar_definitivo", { id: Number(b.dataset.eliminarDef) });
+      showToast("Ticket eliminado definitivamente");
+      state.archivadosCargados = false;
+      await cargarArchivados();
+    } catch (e) { showToast("No se pudo eliminar", "error"); }
+  });
+
+  // Selección múltiple (checkboxes en Tabla y Archivados)
+  const checkTodos = document.getElementById("check-todos");
+  if (checkTodos) checkTodos.onchange = () => {
+    document.querySelectorAll(".check-fila").forEach((c) => {
+      const id = Number(c.dataset.check);
+      if (checkTodos.checked) state.seleccionados.add(id); else state.seleccionados.delete(id);
+    });
+    render();
+  };
+  document.querySelectorAll(".check-fila").forEach((c) => c.onchange = () => {
+    const id = Number(c.dataset.check);
+    if (c.checked) state.seleccionados.add(id); else state.seleccionados.delete(id);
+    render();
+  });
+  const btnCancelarSeleccion = document.getElementById("btn-cancelar-seleccion");
+  if (btnCancelarSeleccion) btnCancelarSeleccion.onclick = () => { state.seleccionados.clear(); render(); };
+
+  const btnArchivarSeleccion = document.getElementById("btn-archivar-seleccion");
+  if (btnArchivarSeleccion) btnArchivarSeleccion.onclick = async () => {
+    const ids = [...state.seleccionados];
+    if (!confirm(`¿Archivar ${ids.length} tickets seleccionados?`)) return;
+    for (const id of ids) { try { await api("archivar_ticket", { id }); } catch (e) { /* sigue con el resto */ } }
+    showToast(`${ids.length} tickets archivados`);
+    state.seleccionados.clear();
+    state.archivadosCargados = false;
+    cargarTodo();
+  };
+
+  const btnCambiarEstadoSeleccion = document.getElementById("btn-cambiar-estado-seleccion");
+  if (btnCambiarEstadoSeleccion) btnCambiarEstadoSeleccion.onclick = async () => {
+    const ids = [...state.seleccionados];
+    const nuevoEstado = document.getElementById("bulk-estado-select").value;
+    if (!confirm(`¿Mover ${ids.length} tickets a "${nuevoEstado}"?`)) return;
+    for (const id of ids) { try { await api("actualizar_ticket", { id, patch: { estado: nuevoEstado } }); } catch (e) { /* sigue con el resto */ } }
+    showToast(`${ids.length} tickets movidos a "${nuevoEstado}"`);
+    state.seleccionados.clear();
+    cargarTodo();
+  };
+
+  const btnCambiarDerivacionSeleccion = document.getElementById("btn-cambiar-derivacion-seleccion");
+  if (btnCambiarDerivacionSeleccion) btnCambiarDerivacionSeleccion.onclick = async () => {
+    const ids = [...state.seleccionados];
+    const nuevaDerivacion = document.getElementById("bulk-derivacion-select").value || null;
+    const etiqueta = nuevaDerivacion || "Sin derivar";
+    if (!confirm(`¿Asignar "${etiqueta}" a ${ids.length} tickets?`)) return;
+    for (const id of ids) { try { await api("actualizar_ticket", { id, patch: { derivacion: nuevaDerivacion } }); } catch (e) { /* sigue con el resto */ } }
+    showToast(`${ids.length} tickets con derivación "${etiqueta}"`);
+    state.seleccionados.clear();
+    cargarTodo();
+  };
+
+  const btnRestaurarSeleccion = document.getElementById("btn-restaurar-seleccion");
+  if (btnRestaurarSeleccion) btnRestaurarSeleccion.onclick = async () => {
+    const ids = [...state.seleccionados];
+    for (const id of ids) { try { await api("actualizar_ticket", { id, patch: { archivado: false } }); } catch (e) { /* sigue */ } }
+    showToast(`${ids.length} tickets restaurados`);
+    state.seleccionados.clear();
+    state.archivadosCargados = false;
+    await cargarArchivados();
+    cargarTodo();
+  };
+
+  const btnEliminarSeleccion = document.getElementById("btn-eliminar-seleccion");
+  if (btnEliminarSeleccion) btnEliminarSeleccion.onclick = async () => {
+    const ids = [...state.seleccionados];
+    if (!confirm(`¿Eliminar definitivamente ${ids.length} tickets? Esta acción NO se puede deshacer.`)) return;
+    for (const id of ids) { try { await api("eliminar_definitivo", { id }); } catch (e) { /* sigue */ } }
+    showToast(`${ids.length} tickets eliminados definitivamente`);
+    state.seleccionados.clear();
+    state.archivadosCargados = false;
+    await cargarArchivados();
+  };
+
+  document.querySelectorAll("[data-estado-de]").forEach((s) => s.onchange = async () => {
+    const id = Number(s.dataset.estadoDe);
+    const ticketActual = state.tickets.find((t) => t.id === id);
+    if (s.value === "Resuelto" && ticketActual && ticketActual.estado !== "Resuelto") {
+      if (!confirm("¿Confirmas que este ticket quedó resuelto?")) { s.value = ticketActual.estado; return; }
+    }
+    try {
+      await api("actualizar_ticket", { id, patch: { estado: s.value } });
+      showToast("Estado actualizado a \"" + s.value + "\"");
+      cargarTodo();
+    } catch (e) { showToast("No se pudo actualizar el estado", "error"); }
+  });
+
+  document.querySelectorAll("[data-derivacion-de]").forEach((s) => s.onchange = async () => {
+    const id = Number(s.dataset.derivacionDe);
+    const ticketActual = state.tickets.find((t) => t.id === id);
+    const nuevaDerivacion = s.value || null;
+    try {
+      await api("actualizar_ticket", { id, patch: { derivacion: nuevaDerivacion } });
+      const texto = nuevaDerivacion
+        ? `Derivación asignada: "${nuevaDerivacion}"${ticketActual && ticketActual.derivacion ? ` (antes: "${ticketActual.derivacion}")` : ""}.`
+        : `Derivación removida${ticketActual && ticketActual.derivacion ? ` (era "${ticketActual.derivacion}")` : ""}.`;
+      await api("agregar_historial", { id, tipo: "estado", texto });
+      showToast(nuevaDerivacion ? `Derivado a "${nuevaDerivacion}"` : "Derivación quitada");
+      cargarTodo();
+    } catch (e) { showToast("No se pudo actualizar la derivación", "error"); }
+  });
+
+  // Arrastrar tickets entre columnas (cambia el estado)
+  document.querySelectorAll("[data-drag-ticket]").forEach((card) => {
+    card.addEventListener("dragstart", (e) => {
+      arrastrandoTicketId = Number(card.dataset.dragTicket);
+      card.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      e.stopPropagation();
+    });
+    card.addEventListener("dragend", () => { card.classList.remove("dragging"); arrastrandoTicketId = null; });
+  });
+  document.querySelectorAll("[data-drop-estado]").forEach((zona) => {
+    zona.addEventListener("dragover", (e) => { if (arrastrandoTicketId != null) { e.preventDefault(); zona.classList.add("drop-target"); } });
+    zona.addEventListener("dragleave", () => zona.classList.remove("drop-target"));
+    zona.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      zona.classList.remove("drop-target");
+      if (arrastrandoTicketId == null) return;
+      const idMovido = arrastrandoTicketId;
+      const nuevoEstado = zona.dataset.dropEstado;
+      const ticketActual = state.tickets.find((t) => t.id === idMovido);
+      arrastrandoTicketId = null;
+      if (!ticketActual || ticketActual.estado === nuevoEstado) return;
+      if (nuevoEstado === "Resuelto" && ticketActual.estado !== "Resuelto") {
+        if (!confirm("¿Confirmas que este ticket quedó resuelto?")) return;
+      }
+      try {
+        await api("actualizar_ticket", { id: idMovido, patch: { estado: nuevoEstado } });
+        showToast(`Movido a "${nuevoEstado}"`);
+        cargarTodo();
+      } catch (err) { showToast("No se pudo mover el ticket", "error"); }
+    });
+  });
+
+  // Arrastrar columnas completas para reordenarlas (se guarda en este navegador)
+  document.querySelectorAll("[data-col-estado]").forEach((col) => {
+    col.addEventListener("dragstart", (e) => {
+      if (e.target.closest("[data-drag-ticket]")) return;
+      arrastrandoEstadoCol = col.dataset.colEstado;
+      e.dataTransfer.effectAllowed = "move";
+    });
+    col.addEventListener("dragover", (e) => {
+      if (arrastrandoEstadoCol && arrastrandoEstadoCol !== col.dataset.colEstado) { e.preventDefault(); col.classList.add("col-drop-target"); }
+    });
+    col.addEventListener("dragleave", () => col.classList.remove("col-drop-target"));
+    col.addEventListener("drop", (e) => {
+      col.classList.remove("col-drop-target");
+      if (!arrastrandoEstadoCol || arrastrandoEstadoCol === col.dataset.colEstado) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const orden = [...state.ordenEstados];
+      const origenIdx = orden.indexOf(arrastrandoEstadoCol);
+      const destinoIdx = orden.indexOf(col.dataset.colEstado);
+      orden.splice(origenIdx, 1);
+      orden.splice(destinoIdx, 0, arrastrandoEstadoCol);
+      state.ordenEstados = orden;
+      guardarOrdenEstados(orden);
+      arrastrandoEstadoCol = null;
+      render();
+    });
+  });
+
+  const abrirComposer = document.getElementById("abrir-composer");
+  if (abrirComposer) abrirComposer.onclick = () => { state.composerAbierto = true; render(); };
+  const cerrarComposer = document.getElementById("cerrar-composer");
+  if (cerrarComposer) cerrarComposer.onclick = () => { state.composerAbierto = false; render(); };
+  const overlayComposer = document.getElementById("overlay-composer");
+  if (overlayComposer) overlayComposer.onclick = (e) => { if (e.target.id === "overlay-composer") { state.composerAbierto = false; render(); } };
+
+  const imgNueva = document.getElementById("imagen-nueva");
+  if (imgNueva) imgNueva.onchange = () => {
+    state.imagenNueva = imgNueva.files[0] || null;
+    document.getElementById("nombre-imagen-nueva").textContent = state.imagenNueva ? state.imagenNueva.name : "Adjuntar comprobante (imagen)";
+  };
+
+  const btnCrear = document.getElementById("btn-crear");
+  if (btnCrear) btnCrear.onclick = crearTicket;
+
+  const overlay = document.getElementById("overlay");
+  if (overlay) overlay.onclick = (e) => { if (e.target.id === "overlay") { state.detalleId = null; render(); } };
+  const cerrar = document.getElementById("cerrar-modal");
+  if (cerrar) cerrar.onclick = () => { state.detalleId = null; render(); };
+  document.querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => {
+    state.modalTab = b.dataset.tab;
+    if (b.dataset.tab === "responder" && !state.plantillasCargadas) cargarPlantillas();
+    render();
+  });
+
+  const btnGuardar = document.getElementById("btn-guardar-datos");
+  if (btnGuardar) btnGuardar.onclick = guardarDatosTicket;
+  const btnArchivarModal = document.getElementById("btn-archivar-desde-modal");
+  if (btnArchivarModal) btnArchivarModal.onclick = async () => {
+    if (!confirm("¿Archivar este ticket? Se quita del tablero pero su historial no se pierde.")) return;
+    try {
+      await api("archivar_ticket", { id: state.detalleId });
+      showToast("Ticket archivado — mostrando el siguiente pendiente");
+      state.archivadosCargados = false;
+      await avanzarAlSiguientePendiente();
+    } catch (e) { showToast("No se pudo archivar", "error"); }
+  };
+  const btnRestaurarModal = document.getElementById("btn-restaurar-desde-modal");
+  if (btnRestaurarModal) btnRestaurarModal.onclick = async () => {
+    try {
+      await api("actualizar_ticket", { id: state.detalleId, patch: { archivado: false } });
+      showToast("Ticket restaurado");
+      state.detalleId = null;
+      state.archivadosCargados = false;
+      await cargarArchivados();
+      cargarTodo();
+    } catch (e) { showToast("No se pudo restaurar", "error"); }
+  };
+  const btnEliminarModal = document.getElementById("btn-eliminar-desde-modal");
+  if (btnEliminarModal) btnEliminarModal.onclick = async () => {
+    if (!confirm("¿Eliminar este ticket definitivamente? Esta acción NO se puede deshacer, se pierde todo su historial.")) return;
+    try {
+      await api("eliminar_definitivo", { id: state.detalleId });
+      showToast("Ticket eliminado definitivamente");
+      state.archivadosCargados = false;
+      await cargarArchivados();
+      await avanzarAlSiguientePendiente();
+    } catch (e) { showToast("No se pudo eliminar", "error"); }
+  };
+  const btnMarcarResuelto = document.getElementById("btn-marcar-resuelto");
+  if (btnMarcarResuelto) btnMarcarResuelto.onclick = async () => {
+    const texto = document.getElementById("texto-cierre").value.trim();
+    if (!confirm("¿Marcar este ticket como Resuelto?")) return;
+    try {
+      if (texto) {
+        await api("agregar_historial", { id: state.detalleId, tipo: "respuesta", texto: `Gestión de cierre: ${texto}` });
+      }
+      await api("actualizar_ticket", { id: state.detalleId, patch: { estado: "Resuelto" } });
+      showToast("Resuelto ✓ — mostrando el siguiente pendiente");
+      await avanzarAlSiguientePendiente();
+    } catch (e) { showToast("No se pudo marcar como resuelto", "error"); }
+  };
+  const btnTicketAnterior = document.getElementById("ticket-anterior");
+  if (btnTicketAnterior) btnTicketAnterior.onclick = () => irTicketAdyacente(-1);
+  const btnTicketSiguiente = document.getElementById("ticket-siguiente");
+  if (btnTicketSiguiente) btnTicketSiguiente.onclick = () => irTicketAdyacente(1);
+  const btnNota = document.getElementById("btn-agregar-nota");
+  if (btnNota) btnNota.onclick = agregarNota;
+  const btnReprocesar = document.getElementById("btn-reprocesar");
+  if (btnReprocesar) btnReprocesar.onclick = reprocesarConIA;
+  const btnSugerir = document.getElementById("btn-sugerir");
+  if (btnSugerir) btnSugerir.onclick = generarSugerencia;
+  const btnConfirmarFinal = document.getElementById("btn-confirmar-final");
+  if (btnConfirmarFinal) btnConfirmarFinal.onclick = confirmarRespuestaFinal;
+
+  const btnUsarPlantilla = document.getElementById("btn-usar-plantilla");
+  if (btnUsarPlantilla) btnUsarPlantilla.onclick = () => {
+    const id = document.getElementById("select-plantilla").value;
+    if (id) usarPlantilla(id);
+  };
+  const btnCrearPlantilla = document.getElementById("btn-crear-plantilla");
+  if (btnCrearPlantilla) btnCrearPlantilla.onclick = crearPlantilla;
+  document.querySelectorAll("[data-eliminar-plantilla]").forEach((b) => b.onclick = () => eliminarPlantilla(Number(b.dataset.eliminarPlantilla)));
+}
+
+async function crearTicket() {
+  const texto = document.getElementById("texto-nuevo").value;
+  const buzonManual = document.getElementById("buzon-nuevo").value;
+  if (!texto.trim() && !state.imagenNueva) return;
+  state.procesandoNuevo = true; state.error = ""; render();
+  try {
+    const payload = { texto, buzonManual };
+    if (state.imagenNueva) {
+      payload.imagenBase64 = await fileToBase64(state.imagenNueva);
+      payload.imagenMediaType = state.imagenNueva.type;
+    }
+    await api("crear_ticket", payload);
+    state.imagenNueva = null;
+    showToast("Ticket creado ✓");
+    state.composerAbierto = false;
+    await cargarTodo();
+  } catch (e) {
+    state.error = "No se pudo procesar. Intenta de nuevo.";
+    showToast("No se pudo crear el ticket", "error");
+  } finally {
+    state.procesandoNuevo = false; render();
+  }
+}
+
+async function guardarDatosTicket() {
+  const id = state.detalleId;
+  const nuevoEstado = document.getElementById("edit-estado").value;
+  const nuevoBuzon = document.getElementById("edit-buzon").value;
+  const nuevaDerivacion = document.getElementById("edit-derivacion").value || null;
+  const ticketActual = state.tickets.find((t) => t.id === id) || state.archivados.find((t) => t.id === id);
+  if (nuevoEstado === "Resuelto" && ticketActual && ticketActual.estado !== "Resuelto") {
+    if (!confirm("¿Confirmas que este ticket quedó resuelto?")) return;
+  }
+  const patch = {
+    tema: document.getElementById("edit-tema").value,
+    resumen: document.getElementById("edit-resumen").value,
+    buzon: nuevoBuzon,
+    prioridad: document.getElementById("edit-prioridad").value,
+    categoria: document.getElementById("edit-categoria").value,
+    solicitante: document.getElementById("edit-solicitante").value,
+    estado: nuevoEstado,
+    derivacion: nuevaDerivacion,
+    needs_review: false,
+  };
+  if (ticketActual && ticketActual.buzon !== nuevoBuzon) {
+    const nombreBuzon = (id) => (BUZONES.find((b) => b.id === id) || {}).label || id;
+    await api("agregar_historial", { id, tipo: "estado", texto: `Ticket derivado de "${nombreBuzon(ticketActual.buzon)}" a "${nombreBuzon(nuevoBuzon)}".` });
+  }
+  if (ticketActual && ticketActual.derivacion !== nuevaDerivacion) {
+    const texto = nuevaDerivacion
+      ? `Derivación asignada: "${nuevaDerivacion}"${ticketActual.derivacion ? ` (antes: "${ticketActual.derivacion}")` : ""}.`
+      : `Derivación removida (era "${ticketActual.derivacion}").`;
+    await api("agregar_historial", { id, tipo: "estado", texto });
+  }
+  await api("actualizar_ticket", { id, patch });
+  showToast("Datos guardados ✓");
+  await cargarTodo();
+}
+
+async function agregarNota() {
+  const texto = document.getElementById("texto-seguimiento").value;
+  if (!texto.trim()) return;
+  await api("agregar_historial", { id: state.detalleId, tipo: "nota", texto });
+  document.getElementById("texto-seguimiento").value = "";
+  showToast("Nota agregada ✓");
+  await cargarTodo();
+}
+
+async function reprocesarConIA() {
+  const texto = document.getElementById("texto-seguimiento").value;
+  const imgInput = document.getElementById("imagen-seguimiento");
+  const img = imgInput.files[0];
+  if (!texto.trim() && !img) return;
+  const payload = { id: state.detalleId, texto };
+  if (img) { payload.imagenBase64 = await fileToBase64(img); payload.imagenMediaType = img.type; }
+  await api("reprocesar_ia", payload);
+  showToast("Ticket actualizado por IA ✓");
+  await cargarTodo();
+}
+
+async function generarSugerencia() {
+  const zona = document.getElementById("zona-sugerencia");
+  zona.innerHTML = `<div class="loading-chip">${iconSvg("loader-2", 14, "spin")} Generando…</div>`;
+  const { sugerencia } = await api("generar_sugerencia", { id: state.detalleId });
+  zona.innerHTML = `
+    <div class="ai-suggestion">${escapeHtml(sugerencia)}
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; gap:8px; flex-wrap:wrap;">
+        <span class="muted" style="font-size:12px;">Al copiar, se registra en el historial y pasa a "Esperando respuesta".</span>
+        <button class="btn-ghost" id="btn-copiar-sugerencia" style="flex-shrink:0;">${iconSvg("copy", 13)} Copiar</button>
+      </div>
+    </div>`;
+  document.getElementById("btn-copiar-sugerencia").onclick = async () => {
+    await navigator.clipboard.writeText(sugerencia);
+    await api("registrar_respuesta_enviada", { id: state.detalleId, texto: sugerencia });
+    showToast("Copiado y ticket movido a \"Esperando respuesta\"");
+    await cargarTodo();
+    document.getElementById("btn-copiar-sugerencia").innerHTML = iconSvg("check", 13) + " Copiado";
+  };
+}
+
+async function confirmarRespuestaFinal() {
+  const texto = document.getElementById("texto-respuesta-final").value;
+  if (!texto.trim()) return;
+  await api("agregar_historial", { id: state.detalleId, tipo: "respuesta", texto: `Texto final enviado (confirmado):\n${texto}` });
+  showToast("Respuesta final guardada en el historial");
+  await cargarTodo();
+}
+
+(async () => {
+  const { data } = await authClient.auth.getSession();
+  if (data.session) { state.session = data.session; cargarTodo(); }
+  else { renderLogin(); }
+})();
+</script>
+</body>
+</html>
